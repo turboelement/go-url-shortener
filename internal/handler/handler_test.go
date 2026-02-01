@@ -1,11 +1,14 @@
 package handler
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-resty/resty/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/service"
@@ -16,19 +19,28 @@ func newTestService() *service.ShortenerService {
 	return service.NewShortenerService(repo)
 }
 
-func setupTestMux(svc *service.ShortenerService, baseURL string) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /", PostHandler(svc, baseURL))
-	mux.HandleFunc("GET /{id}", GetHandler(svc))
+func setupTestServer() (*httptest.Server, *service.ShortenerService) {
+	svc := newTestService()
+
+	r := chi.NewRouter()
+	r.Post("/", PostHandler(svc, "http://localhost:8080/"))
+	r.Get("/{id}", GetHandler(svc))
 
 	//NewServeMux specific: ServeMux returns 405 Method Not Allowed for unknown routes
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Short ID is required", http.StatusBadRequest)
 	})
-	return mux
+
+	return httptest.NewServer(r), svc
 }
 
 func TestPostHandler(t *testing.T) {
+	ts, _ := setupTestServer()
+	defer ts.Close()
+
+	client := resty.New()
+	client.SetBaseURL(ts.URL)
+
 	type want struct {
 		code        int
 		bodyContent string
@@ -36,13 +48,13 @@ func TestPostHandler(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		requestBody string
-		want        want
+		name string
+		body string
+		want want
 	}{
 		{
-			name:        "positive test",
-			requestBody: "https://practicum.yandex.ru",
+			name: "positive test",
+			body: "https://practicum.yandex.ru",
 			want: want{
 				code:        http.StatusCreated,
 				bodyContent: "http://localhost:8080/",
@@ -50,15 +62,15 @@ func TestPostHandler(t *testing.T) {
 			},
 		},
 		{
-			name:        "empty URL",
-			requestBody: "   ",
+			name: "empty URL",
+			body: "   ",
 			want: want{
 				code: http.StatusBadRequest,
 			},
 		},
 		{
-			name:        "empty body",
-			requestBody: "",
+			name: "empty body",
+			body: "",
 			want: want{
 				code: http.StatusBadRequest,
 			},
@@ -67,69 +79,61 @@ func TestPostHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := newTestService()
-			mux := setupTestMux(svc, "http://localhost:8080")
+			req := client.R().
+				SetHeader("Content-Type", "text/plain")
 
-			var body io.Reader
-			if tt.requestBody != "" {
-				body = strings.NewReader(tt.requestBody)
+			if tt.body != "" {
+				req.SetBody(tt.body)
 			}
 
-			req := httptest.NewRequest(http.MethodPost, "/", body)
-			rec := httptest.NewRecorder()
+			resp, err := req.Post("/")
+			require.NoError(t, err, "request failed")
 
-			mux.ServeHTTP(rec, req)
-
-			res := rec.Result()
-			defer res.Body.Close()
-
-			if res.StatusCode != tt.want.code {
-				t.Errorf("expected status %d, got %d", tt.want.code, res.StatusCode)
-				return
-			}
+			assert.Equal(t, tt.want.code, resp.StatusCode(), "status code mismatch")
 
 			if tt.want.contentType != "" {
-				gotType := res.Header.Get("Content-Type")
-				if gotType != tt.want.contentType {
-					t.Errorf("expected Content-Type %q, got %q", tt.want.contentType, gotType)
-				}
+				assert.Equal(t, tt.want.contentType, resp.Header().Get("Content-Type"), "content-type mismatch")
 			}
 
 			if tt.want.bodyContent != "" {
-				bodyBytes, err := io.ReadAll(res.Body)
-				if err != nil {
-					t.Fatalf("failed to read response body: %v", err)
-				}
-				bodyStr := string(bodyBytes)
-				if !strings.Contains(bodyStr, tt.want.bodyContent) {
-					t.Errorf("expected body to contain %q, got %q", tt.want.bodyContent, bodyStr)
-				}
+				assert.Contains(t, resp.String(), tt.want.bodyContent, "body content mismatch")
 			}
 		})
 	}
 }
 
 func TestGetHandler(t *testing.T) {
+	ts, svc := setupTestServer()
+	defer ts.Close()
+
+	client := resty.New()
+	client.SetBaseURL(ts.URL)
+
+	// disable redirect following for testing Location header
+	client.SetRedirectPolicy(resty.RedirectPolicyFunc(func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}))
+
 	type want struct {
 		code     int
 		location string
 	}
 
 	tests := []struct {
-		name string
-		path string
-		want want
+		name        string
+		originalURL string
+		want        want
 	}{
 		{
-			name: "positive test",
-			path: "https://practicum.yandex.ru",
+			name:        "positive redirect",
+			originalURL: "https://practicum.yandex.ru",
 			want: want{
 				code:     http.StatusTemporaryRedirect,
 				location: "https://practicum.yandex.ru",
 			},
 		},
 		{
-			name: "empty path",
+			name: "no id → bad request",
 			want: want{
 				code: http.StatusBadRequest,
 			},
@@ -138,37 +142,20 @@ func TestGetHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := newTestService()
-			mux := setupTestMux(svc, "http://localhost:8080")
-
-			var path string
-			if tt.path != "" {
-				shortID, err := svc.Shorten(tt.path)
-				if err != nil {
-					t.Fatalf("failed to shorten url: %v", err)
-				}
+			path := "/"
+			if tt.originalURL != "" {
+				shortID, err := svc.Shorten(tt.originalURL)
+				require.NoError(t, err, "failed to shorten url")
 				path = "/" + shortID
-			} else {
-				path = "/"
 			}
 
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			rec := httptest.NewRecorder()
+			resp, err := client.R().Get(path)
+			require.NoError(t, err, "GET request failed")
 
-			mux.ServeHTTP(rec, req)
-
-			res := rec.Result()
-			defer res.Body.Close()
-
-			if res.StatusCode != tt.want.code {
-				t.Errorf("expected code %d, got %d", tt.want.code, res.StatusCode)
-			}
+			assert.Equal(t, tt.want.code, resp.StatusCode(), "status code mismatch")
 
 			if tt.want.location != "" {
-				gotLocation := res.Header.Get("Location")
-				if gotLocation != tt.want.location {
-					t.Errorf("expected Location %q, got %q", tt.want.location, gotLocation)
-				}
+				assert.Equal(t, tt.want.location, resp.Header().Get("Location"), "Location header mismatch")
 			}
 		})
 	}

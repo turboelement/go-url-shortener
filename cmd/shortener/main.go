@@ -5,27 +5,20 @@ import (
 	"log"
 	"net/http"
 
-	"go-url-shortener/internal/handler"
-	"go-url-shortener/internal/repository"
-	"go-url-shortener/internal/service"
+	"go-url-shortener/internal/server"
+)
+
+const (
+	addr    = ":8080"
+	baseURL = "http://localhost:8080"
 )
 
 func main() {
-	const (
-		addr    = ":8080"
-		baseURL = "http://localhost:8080"
-	)
-
-	repo := repository.NewURLRepository()
-	svc := service.NewShortenerService(repo)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /", handler.PostHandler(svc, baseURL))
-	mux.HandleFunc("GET /{id}", handler.GetHandler(svc))
+	router := server.NewRouter(baseURL)
 
 	fmt.Printf("Server running at %s\n", baseURL)
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatal(err)
 	}
 }
