@@ -5,20 +5,18 @@ import (
 	"log"
 	"net/http"
 
+	"go-url-shortener/internal/config"
 	"go-url-shortener/internal/server"
 )
 
-const (
-	addr    = ":8080"
-	baseURL = "http://localhost:8080"
-)
-
 func main() {
-	router := server.NewRouter(baseURL)
+	cfg := config.New()
 
-	fmt.Printf("Server running at %s\n", baseURL)
+	router := server.NewRouter(cfg.BaseURL)
 
-	if err := http.ListenAndServe(addr, router); err != nil {
+	fmt.Printf("Server running at %s\n", cfg.BaseURL)
+
+	if err := http.ListenAndServe(cfg.ServerAddr, router); err != nil {
 		log.Fatal(err)
 	}
 }

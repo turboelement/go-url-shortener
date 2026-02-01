@@ -17,6 +17,7 @@ func NewRouter(baseURL string) http.Handler {
 	r := chi.NewRouter()
 
 	r.Post("/", handler.PostHandler(svc, baseURL))
+	r.Post("/api/shorten", handler.PostJSONHandler(svc, baseURL))
 	r.Get("/{id}", handler.GetHandler(svc))
 
 	return r

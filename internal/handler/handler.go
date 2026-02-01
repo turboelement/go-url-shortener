@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -34,6 +35,43 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(shortURL))
+	}
+}
+
+func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			URL string `json:"url"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		if req.URL == "" {
+			http.Error(w, "URL is required", http.StatusBadRequest)
+			return
+		}
+
+		shortID, err := svc.Shorten(req.URL)
+		if err != nil {
+			http.Error(w, "Failed to shorten", http.StatusInternalServerError)
+			return
+		}
+
+		shortURL := baseURL + "/" + shortID
+
+		resp := struct {
+			Result string `json:"result"`
+		}{
+			Result: shortURL,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 
