@@ -34,7 +34,7 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(shortURL))
+		w.Write([]byte(shortURL))
 	}
 }
 
