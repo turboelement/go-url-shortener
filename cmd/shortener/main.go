@@ -21,7 +21,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	router := server.NewRouterWithLogger(cfg.BaseURL, logger)
+	router := server.NewRouterWithLogger(cfg.BaseURL, logger, cfg.FileStoragePath)
 	//router := server.NewRouter(cfg.BaseURL)
 
 	srv := &http.Server{

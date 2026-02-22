@@ -11,10 +11,10 @@ var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345
 const shortIDLength = 8
 
 type ShortenerService struct {
-	repo *repository.URLRepository
+	repo repository.URLRepositoryInterface
 }
 
-func NewShortenerService(repo *repository.URLRepository) *ShortenerService {
+func NewShortenerService(repo repository.URLRepositoryInterface) *ShortenerService {
 	return &ShortenerService{repo: repo}
 }
 

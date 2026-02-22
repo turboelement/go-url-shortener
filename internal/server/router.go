@@ -27,8 +27,9 @@ func NewRouter(baseURL string) http.Handler {
 	return r
 }
 
-func NewRouterWithLogger(baseURL string, zaplogger *zap.Logger) http.Handler {
-	repo := repository.NewURLRepository()
+func NewRouterWithLogger(baseURL string, zaplogger *zap.Logger, filePath string) http.Handler {
+	// repo := repository.NewURLRepository()
+	repo := repository.NewFileURLRepository(filePath)
 	svc := service.NewShortenerService(repo)
 
 	r := chi.NewRouter()
