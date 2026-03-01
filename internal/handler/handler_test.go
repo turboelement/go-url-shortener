@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	"go-url-shortener/internal/service"
 )
 
+const testBaseURL = "http://localhost:8080"
+
 func newTestService() *service.ShortenerService {
 	repo := repository.NewURLRepository()
 	return service.NewShortenerService(repo)
@@ -23,7 +26,8 @@ func setupTestServer() (*httptest.Server, *service.ShortenerService) {
 	svc := newTestService()
 
 	r := chi.NewRouter()
-	r.Post("/", PostHandler(svc, "http://localhost:8080/"))
+	r.Post("/", PostHandler(svc, testBaseURL))
+	r.Post("/api/shorten", PostJSONHandler(svc, testBaseURL))
 	r.Get("/{id}", GetHandler(svc))
 
 	//NewServeMux specific: ServeMux returns 405 Method Not Allowed for unknown routes
@@ -97,6 +101,91 @@ func TestPostHandler(t *testing.T) {
 
 			if tt.want.bodyContent != "" {
 				assert.Contains(t, resp.String(), tt.want.bodyContent, "body content mismatch")
+			}
+		})
+	}
+}
+
+func TestPostJSONHandler(t *testing.T) {
+	ts, _ := setupTestServer()
+	defer ts.Close()
+
+	client := resty.New()
+	client.SetBaseURL(ts.URL)
+
+	tests := []struct {
+		name            string
+		requestBody     interface{} // map, struct or []byte
+		wantStatus      int
+		wantContain     string
+		wantContentType string
+	}{
+		{
+			name: "positive test — valid URL",
+			requestBody: map[string]string{
+				"url": "https://practicum.yandex.ru",
+			},
+			wantStatus:      http.StatusCreated,
+			wantContain:     testBaseURL + "/",
+			wantContentType: "application/json",
+		},
+		{
+			name: "empty URL in JSON",
+			requestBody: map[string]string{
+				"url": "",
+			},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "missing url field",
+			requestBody: map[string]string{
+				"link": "https://ya.ru",
+			},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:        "invalid JSON",
+			requestBody: `{"url": "https://ya.ru",}`, // extra comma
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:        "not JSON at all",
+			requestBody: "just plain text",
+			wantStatus:  http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body []byte
+			var err error
+
+			switch v := tt.requestBody.(type) {
+			case string:
+				body = []byte(v)
+			case map[string]string:
+				body, err = json.Marshal(v)
+				require.NoError(t, err)
+			default:
+				t.Fatalf("unsupported requestBody type: %T", v)
+			}
+
+			resp, err := client.R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(body).
+				Post("/api/shorten")
+
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantStatus, resp.StatusCode(), "status code mismatch")
+
+			if tt.wantContentType != "" {
+				assert.Equal(t, tt.wantContentType, resp.Header().Get("Content-Type"))
+			}
+
+			if tt.wantContain != "" {
+				assert.Contains(t, resp.String(), tt.wantContain, "response should contain short URL prefix")
+				assert.Contains(t, resp.String(), `"result":"`, "should have result field")
 			}
 		})
 	}

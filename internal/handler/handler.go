@@ -9,6 +9,14 @@ import (
 	"go-url-shortener/internal/service"
 )
 
+type Request struct {
+	URL string `json:"url"`
+}
+
+type Response struct {
+	Result string `json:"result"`
+}
+
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -34,15 +42,13 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(shortURL))
+		w.Write([]byte(shortURL))
 	}
 }
 
 func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			URL string `json:"url"`
-		}
+		var req Request
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -62,16 +68,18 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 
 		shortURL := baseURL + "/" + shortID
 
-		resp := struct {
-			Result string `json:"result"`
-		}{
+		resp := Response{
 			Result: shortURL,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 
-		_ = json.NewEncoder(w).Encode(resp)
+		// enc := json.NewEncoder(w)
+		// enc.SetIndent("", "  ")
+		// enc.Encode(resp)
+
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
