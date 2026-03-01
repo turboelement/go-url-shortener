@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/service"
 )
 
@@ -99,5 +100,15 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 
 		w.Header().Set("Location", originalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
+}
+
+func PingHandler(repo repository.URLRepositoryInterface) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := repo.Ping(r.Context()); err != nil {
+			http.Error(w, "Error connecting to DB", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	}
 }

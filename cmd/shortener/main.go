@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go-url-shortener/internal/config"
+	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
 
 	"go.uber.org/zap"
@@ -21,8 +22,22 @@ func main() {
 	}
 	defer logger.Sync()
 
-	router := server.NewRouterWithLogger(cfg.BaseURL, logger, cfg.FileStoragePath)
-	//router := server.NewRouter(cfg.BaseURL)
+	var dbRepo *repository.PostgresRepository
+	if cfg.DatabaseDSN != "" {
+		var err error
+		dbRepo, err = repository.NewPostgresRepository(cfg.DatabaseDSN)
+		if err != nil {
+			logger.Fatal("Error connecting to DB", zap.Error(err))
+		}
+		defer dbRepo.Close()
+	}
+
+	router := server.NewRouter(server.RouterDeps{
+		BaseURL:  cfg.BaseURL,
+		Logger:   logger,
+		FilePath: cfg.FileStoragePath,
+		DBRepo:   dbRepo,
+	})
 
 	srv := &http.Server{
 		Addr:         cfg.ServerAddr,

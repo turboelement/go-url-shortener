@@ -1,6 +1,9 @@
 package repository
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type URLRepository struct {
 	store map[string]string
@@ -27,4 +30,8 @@ func (r *URLRepository) Get(shortID string) (string, bool) {
 
 	url, ok := r.store[shortID]
 	return url, ok
+}
+
+func (r *URLRepository) Ping(ctx context.Context) error {
+	return nil
 }

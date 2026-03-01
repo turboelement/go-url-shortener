@@ -2,9 +2,12 @@ package repository
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 type FileURLRepository struct {
@@ -46,7 +49,7 @@ func (r *FileURLRepository) Save(shortID, originalURL string) {
 	}
 
 	entry := FileEntry{
-		UUID:        fmt.Sprintf("%d", len(r.store)),
+		UUID:        uuid.NewString(),
 		ShortURL:    shortID,
 		OriginalURL: originalURL,
 	}
@@ -61,6 +64,10 @@ func (r *FileURLRepository) Save(shortID, originalURL string) {
 	if err != nil {
 		fmt.Printf("Error writing to file: %v\n", err)
 	}
+}
+
+func (r *FileURLRepository) Ping(ctx context.Context) error {
+	return nil
 }
 
 func (r *FileURLRepository) loadFromFile() {
