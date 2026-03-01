@@ -15,12 +15,12 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		return nil, fmt.Errorf("Error connection to DB: %w", err)
+		return nil, fmt.Errorf("error connection to database: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("Error pinging DB: %w", err)
+		return nil, fmt.Errorf("error pinging database: %w", err)
 	}
 
 	_, err = pool.Exec(ctx, `
@@ -32,7 +32,7 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	`)
 	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("Error creating table: %w", err)
+		return nil, fmt.Errorf("error creating table: %w", err)
 	}
 
 	return &PostgresRepository{db: pool}, nil
@@ -45,7 +45,7 @@ func (r *PostgresRepository) Save(shortID, originalURL string) {
 		shortID, originalURL,
 	)
 	if err != nil {
-		fmt.Printf("Error saving to DB: %v\n", err)
+		fmt.Printf("error saving to database: %v\n", err)
 	}
 }
 
