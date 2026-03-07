@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -12,6 +15,10 @@ type PostgresRepository struct {
 }
 
 func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
+	if err := RunMigrations(dsn); err != nil {
+		return nil, err
+	}
+
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -21,18 +28,6 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("error pinging database: %w", err)
-	}
-
-	_, err = pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS urls (
-			short_id VARCHAR(10) PRIMARY KEY,
-			original_url TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		);
-	`)
-	if err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("error creating table: %w", err)
 	}
 
 	return &PostgresRepository{db: pool}, nil
@@ -68,4 +63,20 @@ func (r *PostgresRepository) Ping(ctx context.Context) error {
 
 func (r *PostgresRepository) Close() {
 	r.db.Close()
+}
+
+func RunMigrations(dsn string) error {
+	m, err := migrate.New(
+		"file://migrations",
+		dsn,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create migrate instance: %w", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("failed to apply migrations: %w", err)
+	}
+
+	return nil
 }

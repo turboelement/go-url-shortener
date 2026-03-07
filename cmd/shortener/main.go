@@ -48,7 +48,7 @@ func main() {
 
 	fmt.Printf("Server running at %s\n", cfg.BaseURL)
 
-	if err := srv.ListenAndServe(); err != nil {
-		logger.Fatal("server failed", zap.Error(err))
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Error("server failed", zap.Error(err))
 	}
 }
