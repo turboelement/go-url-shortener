@@ -35,3 +35,14 @@ func (r *URLRepository) Get(shortID string) (string, bool) {
 func (r *URLRepository) Ping(ctx context.Context) error {
 	return nil
 }
+
+func (r *URLRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, item := range items {
+		r.store[item.ShortID] = item.OriginalURL
+	}
+
+	return nil
+}

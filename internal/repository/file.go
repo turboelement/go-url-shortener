@@ -70,6 +70,34 @@ func (r *FileURLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
+func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, item := range items {
+		r.store[item.ShortID] = item.OriginalURL
+
+		entry := FileEntry{
+			UUID:        uuid.NewString(),
+			ShortURL:    item.ShortID,
+			OriginalURL: item.OriginalURL,
+		}
+
+		data, err := json.Marshal(entry)
+		if err != nil {
+			fmt.Printf("Error marhaling to JSON: %v\n", err)
+			return err
+		}
+
+		_, err = r.file.Write(append(data, '\n'))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *FileURLRepository) loadFromFile() {
 	f, err := os.Open(r.filePath)
 	if err != nil {

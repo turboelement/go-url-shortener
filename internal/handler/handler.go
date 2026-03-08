@@ -10,13 +10,17 @@ import (
 	"go-url-shortener/internal/service"
 )
 
-type Request struct {
+type JSONRequest struct {
 	URL string `json:"url"`
 }
 
-type Response struct {
+type JSONResponse struct {
 	Result string `json:"result"`
 }
+
+type BatchRequest []service.BatchItem
+
+type BatchResponse []service.BatchResult
 
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -49,7 +53,7 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 
 func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req Request
+		var req JSONRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -69,7 +73,7 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 
 		shortURL := baseURL + "/" + shortID
 
-		resp := Response{
+		resp := JSONResponse{
 			Result: shortURL,
 		}
 
@@ -81,6 +85,32 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		// enc.Encode(resp)
 
 		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req BatchRequest
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		results, err := svc.BatchShorten(r.Context(), req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		for i := range results {
+			results[i].ShortURL = baseURL + "/" + results[i].ShortURL
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+
+		json.NewEncoder(w).Encode(results)
 	}
 }
 

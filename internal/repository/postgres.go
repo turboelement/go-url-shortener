@@ -61,6 +61,26 @@ func (r *PostgresRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
+func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	for _, item := range items {
+		_, err := tx.Exec(ctx,
+			"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
+			item.ShortID, item.OriginalURL,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert %s: %w", item.ShortID, err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *PostgresRepository) Close() {
 	r.db.Close()
 }

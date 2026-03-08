@@ -29,6 +29,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryIn
 	r := chi.NewRouter()
 	r.Post("/", PostHandler(svc, testBaseURL))
 	r.Post("/api/shorten", PostJSONHandler(svc, testBaseURL))
+	r.Post("/api/shorten/batch", BatchShortenHandler(svc, testBaseURL))
 	r.Get("/{id}", GetHandler(svc))
 	r.Get("/ping", PingHandler(mockRepo))
 
@@ -202,6 +203,100 @@ func TestPostJSONHandler(t *testing.T) {
 			if tt.want.body != "" {
 				assert.Contains(t, resp.String(), tt.want.body, "response should contain short URL prefix")
 				assert.Contains(t, resp.String(), `"result":"`, "should have result field")
+			}
+		})
+	}
+}
+
+func TestBatchShortenHandler(t *testing.T) {
+	ts, mockRepo := setupTestServer(t)
+	defer ts.Close()
+
+	client := resty.New()
+	client.SetBaseURL(ts.URL)
+
+	tests := []struct {
+		name          string
+		items         []service.BatchItem
+		wantStatus    int
+		wantLen       int
+		setupMocks    func()
+		checkResponse func(*testing.T, *resty.Response)
+	}{
+		{
+			name: "positive batch — two valid urls",
+			items: []service.BatchItem{
+				{CorrelationID: "id-1", OriginalURL: "https://ya.ru"},
+				{CorrelationID: "id-2", OriginalURL: "https://google.com"},
+			},
+			wantStatus: http.StatusCreated,
+			wantLen:    2,
+			setupMocks: func() {
+				mockRepo.EXPECT().
+					Get(gomock.Any()).
+					Return("", false).
+					Times(2)
+
+				mockRepo.EXPECT().
+					BatchSave(gomock.Any(), gomock.Len(2)).
+					Return(nil).
+					Times(1)
+			},
+			checkResponse: func(t *testing.T, resp *resty.Response) {
+				var results []service.BatchResult
+				err := json.Unmarshal(resp.Body(), &results)
+				require.NoError(t, err)
+
+				assert.Len(t, results, 2)
+
+				idsFound := make(map[string]bool)
+				for _, r := range results {
+					assert.NotEmpty(t, r.CorrelationID)
+					assert.NotEmpty(t, r.ShortURL)
+					assert.True(t, strings.HasPrefix(r.ShortURL, testBaseURL+"/"))
+					idsFound[r.CorrelationID] = true
+				}
+
+				assert.True(t, idsFound["id-1"])
+				assert.True(t, idsFound["id-2"])
+			},
+		},
+
+		{
+			name:          "empty batch",
+			items:         []service.BatchItem{},
+			wantStatus:    http.StatusBadRequest,
+			wantLen:       0,
+			setupMocks:    func() {},
+			checkResponse: func(t *testing.T, resp *resty.Response) {},
+		},
+
+		{
+			name: "invalid item",
+			items: []service.BatchItem{
+				{CorrelationID: "bad", OriginalURL: ""},
+			},
+			wantStatus:    http.StatusBadRequest,
+			wantLen:       0,
+			setupMocks:    func() {},
+			checkResponse: func(t *testing.T, resp *resty.Response) {},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupMocks()
+
+			resp, err := client.R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(tt.items).
+				Post("/api/shorten/batch")
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, resp.StatusCode())
+
+			if tt.wantStatus == http.StatusCreated {
+				tt.checkResponse(t, resp)
 			}
 		})
 	}

@@ -42,6 +42,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 
 	r.Post("/", handler.PostHandler(svc, deps.BaseURL))
 	r.Post("/api/shorten", handler.PostJSONHandler(svc, deps.BaseURL))
+	r.Post("/api/shorten/batch", handler.BatchShortenHandler(svc, deps.BaseURL))
 	r.Get("/{id}", handler.GetHandler(svc))
 	r.Get("/ping", handler.PingHandler(repo))
 
