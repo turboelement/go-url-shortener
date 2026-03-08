@@ -6,22 +6,31 @@ import (
 )
 
 type URLRepository struct {
-	store map[string]string
+	store map[string]string // shortID | originalURL
+	rev   map[string]string // reverse originalURL | shortID
 	mu    sync.RWMutex
 }
 
 func NewURLRepository() *URLRepository {
 	return &URLRepository{
 		store: make(map[string]string),
+		rev:   make(map[string]string),
 		// mu no need to init — zero value sync.RWMutex is ready to use
 	}
 }
 
-func (r *URLRepository) Save(shortID, originalURL string) {
+func (r *URLRepository) Save(shortID, originalURL string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if storedID, exists := r.rev[originalURL]; exists {
+		return storedID, ErrURLAlreadyExists
+	}
+
 	r.store[shortID] = originalURL
+	r.rev[originalURL] = shortID
+
+	return shortID, nil
 }
 
 func (r *URLRepository) Get(shortID string) (string, bool) {
@@ -41,7 +50,10 @@ func (r *URLRepository) BatchSave(ctx context.Context, items []BatchEntry) error
 	defer r.mu.Unlock()
 
 	for _, item := range items {
-		r.store[item.ShortID] = item.OriginalURL
+		if _, exists := r.rev[item.OriginalURL]; !exists {
+			r.store[item.ShortID] = item.OriginalURL
+			r.rev[item.OriginalURL] = item.ShortID
+		}
 	}
 
 	return nil

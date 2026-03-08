@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,15 +35,30 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	return &PostgresRepository{db: pool}, nil
 }
 
-func (r *PostgresRepository) Save(shortID, originalURL string) {
+func (r *PostgresRepository) Save(shortID, originalURL string) (string, error) {
 	ctx := context.Background()
-	_, err := r.db.Exec(ctx,
-		"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
+
+	var returnedShortID string
+	err := r.db.QueryRow(ctx,
+		"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (original_url) DO NOTHING RETURNING short_id",
 		shortID, originalURL,
-	)
+	).Scan(&returnedShortID)
+
 	if err != nil {
-		fmt.Printf("error saving to database: %v\n", err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = r.db.QueryRow(ctx,
+				"SELECT short_id FROM urls WHERE original_url = $1",
+				originalURL,
+			).Scan(&returnedShortID)
+			if err != nil {
+				return "", fmt.Errorf("cannot find existing url: %w", err)
+			}
+			return returnedShortID, ErrURLAlreadyExists
+		}
+		return "", fmt.Errorf("error saving to database: %w", err)
 	}
+
+	return returnedShortID, nil
 }
 
 func (r *PostgresRepository) Get(shortID string) (string, bool) {

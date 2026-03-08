@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -39,13 +40,17 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 	return repo
 }
 
-func (r *FileURLRepository) Save(shortID, originalURL string) {
-	r.mu.Lock()
-	r.store[shortID] = originalURL
-	r.mu.Unlock()
+func (r *FileURLRepository) Save(shortID, originalURL string) (string, error) {
+	storedID, err := r.URLRepository.Save(shortID, originalURL)
+	if err != nil {
+		if errors.Is(err, ErrURLAlreadyExists) {
+			return storedID, err
+		}
+		return "", err
+	}
 
 	if r.file == nil {
-		return
+		return storedID, nil
 	}
 
 	entry := FileEntry{
@@ -56,14 +61,15 @@ func (r *FileURLRepository) Save(shortID, originalURL string) {
 
 	data, err := json.Marshal(entry)
 	if err != nil {
-		fmt.Printf("Error marhaling to JSON: %v\n", err)
-		return
+		return "", fmt.Errorf("error marshaling to json: %w", err)
 	}
 
 	_, err = r.file.Write(append(data, '\n'))
 	if err != nil {
-		fmt.Printf("Error writing to file: %v\n", err)
+		return "", fmt.Errorf("error writing to file: %w", err)
 	}
+
+	return storedID, nil
 }
 
 func (r *FileURLRepository) Ping(ctx context.Context) error {
@@ -75,23 +81,29 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) e
 	defer r.mu.Unlock()
 
 	for _, item := range items {
+		if _, exists := r.rev[item.OriginalURL]; exists {
+			continue
+		}
+
 		r.store[item.ShortID] = item.OriginalURL
+		r.rev[item.OriginalURL] = item.ShortID
 
-		entry := FileEntry{
-			UUID:        uuid.NewString(),
-			ShortURL:    item.ShortID,
-			OriginalURL: item.OriginalURL,
-		}
+		if r.file != nil {
+			entry := FileEntry{
+				UUID:        uuid.NewString(),
+				ShortURL:    item.ShortID,
+				OriginalURL: item.OriginalURL,
+			}
 
-		data, err := json.Marshal(entry)
-		if err != nil {
-			fmt.Printf("Error marhaling to JSON: %v\n", err)
-			return err
-		}
+			data, err := json.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("error marshaling to json: %w", err)
+			}
 
-		_, err = r.file.Write(append(data, '\n'))
-		if err != nil {
-			return err
+			_, err = r.file.Write(append(data, '\n'))
+			if err != nil {
+				return fmt.Errorf("error writing to file: %w", err)
+			}
 		}
 	}
 
@@ -102,7 +114,7 @@ func (r *FileURLRepository) loadFromFile() {
 	f, err := os.Open(r.filePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			fmt.Printf("Error reading file:: %v\n", err)
+			fmt.Printf("Error reading file %s: %v\n", r.filePath, err)
 		}
 		return
 	}
@@ -120,12 +132,13 @@ func (r *FileURLRepository) loadFromFile() {
 
 		var entry FileEntry
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			fmt.Printf("Error unmarshaling line form file: %v\n", err)
+			fmt.Printf("Error unmarshaling line from file: %v\n", err)
 			continue
 		}
 
 		if entry.ShortURL != "" && entry.OriginalURL != "" {
 			r.store[entry.ShortURL] = entry.OriginalURL
+			r.rev[entry.OriginalURL] = entry.ShortURL
 		}
 	}
 }

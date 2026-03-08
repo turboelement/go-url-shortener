@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -38,15 +39,22 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 		}
 
 		shortID, err := svc.Shorten(originalURL)
-		if err != nil {
-			http.Error(w, "Failed to generate short URL", http.StatusInternalServerError)
+		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
+
+		if err != nil && !isURLAlreadyExists {
+			http.Error(w, "Failed to shorten", http.StatusInternalServerError)
 			return
 		}
 
 		shortURL := baseURL + "/" + shortID
 
+		status := http.StatusCreated
+		if isURLAlreadyExists {
+			status = http.StatusConflict
+		}
+
 		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(status)
 		w.Write([]byte(shortURL))
 	}
 }
@@ -66,19 +74,26 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		}
 
 		shortID, err := svc.Shorten(req.URL)
-		if err != nil {
+		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
+
+		if err != nil && !isURLAlreadyExists {
 			http.Error(w, "Failed to shorten", http.StatusInternalServerError)
 			return
 		}
 
 		shortURL := baseURL + "/" + shortID
 
+		status := http.StatusCreated
+		if isURLAlreadyExists {
+			status = http.StatusConflict
+		}
+
 		resp := JSONResponse{
 			Result: shortURL,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(status)
 
 		// enc := json.NewEncoder(w)
 		// enc.SetIndent("", "  ")

@@ -50,8 +50,15 @@ func (s *ShortenerService) Shorten(originalURL string) (string, error) {
 		shortID = s.GenerateShortID()
 	}
 
-	s.repo.Save(shortID, originalURL)
-	return shortID, nil
+	storedShortID, err := s.repo.Save(shortID, originalURL)
+	if err != nil {
+		if errors.Is(err, repository.ErrURLAlreadyExists) {
+			return storedShortID, repository.ErrURLAlreadyExists
+		}
+		return "", err
+	}
+
+	return storedShortID, nil
 }
 
 func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) ([]BatchResult, error) {
