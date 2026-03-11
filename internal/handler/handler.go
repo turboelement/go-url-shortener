@@ -5,10 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
+	"go-url-shortener/internal/logger"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/service"
+
+	"go.uber.org/zap"
 )
 
 type JSONRequest struct {
@@ -25,16 +29,20 @@ type BatchResponse []service.BatchResult
 
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, "Cannot read request body", http.StatusBadRequest)
+			log.Error("Cannot read request body", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		defer r.Body.Close()
 
 		originalURL := strings.TrimSpace(string(body))
 		if originalURL == "" {
-			http.Error(w, "URL cannot be empty", http.StatusBadRequest)
+			log.Error("URL cannot be empty", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
@@ -42,11 +50,17 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
 
 		if err != nil && !isURLAlreadyExists {
-			http.Error(w, "Failed to shorten", http.StatusInternalServerError)
+			log.Error("Failed to shorten", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
-		shortURL := baseURL + "/" + shortID
+		shortURL, err := url.JoinPath(baseURL, shortID)
+		if err != nil {
+			log.Error("Failed to build short URL", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 
 		status := http.StatusCreated
 		if isURLAlreadyExists {
@@ -61,15 +75,19 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 
 func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
 		var req JSONRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			log.Error("Invalid JSON", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
 		if req.URL == "" {
-			http.Error(w, "URL is required", http.StatusBadRequest)
+			log.Error("URL is required")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
@@ -77,11 +95,17 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
 
 		if err != nil && !isURLAlreadyExists {
-			http.Error(w, "Failed to shorten", http.StatusInternalServerError)
+			log.Error("Failed to shorten", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
-		shortURL := baseURL + "/" + shortID
+		shortURL, err := url.JoinPath(baseURL, shortID)
+		if err != nil {
+			log.Error("Failed to build short URL", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
 
 		status := http.StatusCreated
 		if isURLAlreadyExists {
@@ -95,31 +119,36 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 
-		// enc := json.NewEncoder(w)
-		// enc.SetIndent("", "  ")
-		// enc.Encode(resp)
-
 		json.NewEncoder(w).Encode(resp)
 	}
 }
 
 func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
 		var req BatchRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			log.Error("Invalid JSON", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
 		results, err := svc.BatchShorten(r.Context(), req)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			log.Error("Failed to shorten batch", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
 		for i := range results {
-			results[i].ShortURL = baseURL + "/" + results[i].ShortURL
+			results[i].ShortURL, err = url.JoinPath(baseURL, results[i].ShortURL)
+			if err != nil {
+				log.Error("Failed to build short URL", zap.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -131,15 +160,19 @@ func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.Han
 
 func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
 		id := r.PathValue("id")
 		if id == "" {
-			http.Error(w, "Short ID is required", http.StatusBadRequest)
+			log.Error("Short ID is required")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
 		originalURL, found := svc.GetOriginalURL(id)
 		if !found {
-			http.Error(w, "Short URL not found", http.StatusNotFound)
+			log.Error("Short URL not found")
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
 
@@ -150,8 +183,11 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 
 func PingHandler(repo repository.URLRepositoryInterface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
 		if err := repo.Ping(r.Context()); err != nil {
-			http.Error(w, "Error connecting to DB", http.StatusInternalServerError)
+			log.Error("Error connecting to DB", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusOK)

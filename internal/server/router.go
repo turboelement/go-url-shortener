@@ -15,24 +15,13 @@ import (
 )
 
 type RouterDeps struct {
-	BaseURL  string
-	Logger   *zap.Logger
-	FilePath string
-	DBRepo   *repository.PostgresRepository
+	BaseURL string
+	Logger  *zap.Logger
+	Repo    repository.URLRepositoryInterface
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
-	var repo repository.URLRepositoryInterface
-
-	if deps.DBRepo != nil {
-		repo = deps.DBRepo
-	} else if deps.FilePath != "" {
-		repo = repository.NewFileURLRepository(deps.FilePath)
-	} else {
-		repo = repository.NewURLRepository()
-	}
-
-	svc := service.NewShortenerService(repo)
+	svc := service.NewShortenerService(deps.Repo)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Decompress)
@@ -44,7 +33,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Post("/api/shorten", handler.PostJSONHandler(svc, deps.BaseURL))
 	r.Post("/api/shorten/batch", handler.BatchShortenHandler(svc, deps.BaseURL))
 	r.Get("/{id}", handler.GetHandler(svc))
-	r.Get("/ping", handler.PingHandler(repo))
+	r.Get("/ping", handler.PingHandler(deps.Repo))
 
 	return r
 }

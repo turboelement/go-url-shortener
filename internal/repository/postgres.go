@@ -17,7 +17,7 @@ type PostgresRepository struct {
 }
 
 func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
-	if err := RunMigrations(dsn); err != nil {
+	if err := runMigrations(dsn); err != nil {
 		return nil, err
 	}
 
@@ -79,30 +79,36 @@ func (r *PostgresRepository) Ping(ctx context.Context) error {
 }
 
 func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+	if len(items) == 0 {
+		return nil
 	}
-	defer tx.Rollback(ctx)
+
+	batch := &pgx.Batch{}
 
 	for _, item := range items {
-		_, err := tx.Exec(ctx,
+		batch.Queue(
 			"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
 			item.ShortID, item.OriginalURL,
 		)
-		if err != nil {
-			return fmt.Errorf("failed to insert %s: %w", item.ShortID, err)
+	}
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range items {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("failed to send batch: %w", err)
 		}
 	}
 
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (r *PostgresRepository) Close() {
 	r.db.Close()
 }
 
-func RunMigrations(dsn string) error {
+func runMigrations(dsn string) error {
 	m, err := migrate.New(
 		"file://migrations",
 		dsn,

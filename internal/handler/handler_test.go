@@ -21,6 +21,8 @@ import (
 const testBaseURL = "http://localhost:8080"
 
 func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryInterface) {
+	t.Helper()
+
 	ctrl := gomock.NewController(t)
 	mockRepo := mocks.NewMockURLRepositoryInterface(ctrl)
 
@@ -63,7 +65,7 @@ func TestPostHandler(t *testing.T) {
 			body: "https://practicum.yandex.ru",
 			want: want{
 				code: http.StatusCreated,
-				body: testBaseURL + "/",
+				body: testBaseURL,
 			},
 		},
 		{
@@ -134,7 +136,7 @@ func TestPostJSONHandler(t *testing.T) {
 			},
 			want: want{
 				code: http.StatusCreated,
-				body: testBaseURL + "/",
+				body: testBaseURL,
 			},
 		},
 		{

@@ -40,16 +40,16 @@ func New() *Config {
 	flag.Parse()
 
 	// parsing env
-	if v, ok := os.LookupEnv(envServerAddr); ok && v != "" {
+	if v, ok := os.LookupEnv(envServerAddr); ok {
 		cfg.ServerAddr = v
 	}
-	if v, ok := os.LookupEnv(envBaseURL); ok && v != "" {
+	if v, ok := os.LookupEnv(envBaseURL); ok {
 		cfg.BaseURL = v
 	}
-	if v := os.Getenv(envFileStoragePath); v != "" {
+	if v, ok := os.LookupEnv(envFileStoragePath); ok {
 		cfg.FileStoragePath = v
 	}
-	if v := os.Getenv(envDatabaseDSN); v != "" {
+	if v, ok := os.LookupEnv(envDatabaseDSN); ok {
 		cfg.DatabaseDSN = v
 	}
 
@@ -59,20 +59,8 @@ func New() *Config {
 	}
 
 	// if BaseURL (flag -b or env BASE_URL) empty
-	wasBaseEmpty := cfg.BaseURL == ""
-	if wasBaseEmpty {
+	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://" + cfg.ServerAddr
-	}
-
-	fmt.Printf("Using ServerAddr: %s\n", cfg.ServerAddr)
-	fmt.Printf("Using BaseURL: %s %s\n",
-		cfg.BaseURL,
-		map[bool]string{true: "(generated from ServerAddr)", false: ""}[wasBaseEmpty],
-	)
-	if cfg.DatabaseDSN != "" {
-		fmt.Printf("DatabaseDSN: %s\n", cfg.DatabaseDSN)
-	} else {
-		fmt.Printf("Using FileStoragePath: %s\n", cfg.FileStoragePath)
 	}
 
 	return cfg
