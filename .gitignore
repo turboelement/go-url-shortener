@@ -22,3 +22,5 @@ vendor/
 .idea
 .vscode
 *.code-workspace
+
+urls.json

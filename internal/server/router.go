@@ -14,36 +14,26 @@ import (
 	"go-url-shortener/internal/service"
 )
 
-func NewRouter(baseURL string) http.Handler {
-	repo := repository.NewURLRepository()
-	svc := service.NewShortenerService(repo)
-
-	r := chi.NewRouter()
-
-	r.Post("/", handler.PostHandler(svc, baseURL))
-	r.Post("/api/shorten", handler.PostJSONHandler(svc, baseURL))
-	r.Get("/{id}", handler.GetHandler(svc))
-
-	return r
+type RouterDeps struct {
+	BaseURL string
+	Logger  *zap.Logger
+	Repo    repository.URLRepositoryInterface
 }
 
-func NewRouterWithLogger(baseURL string, zaplogger *zap.Logger, filePath string) http.Handler {
-	// repo := repository.NewURLRepository()
-	repo := repository.NewFileURLRepository(filePath)
-	svc := service.NewShortenerService(repo)
+func NewRouter(deps RouterDeps) http.Handler {
+	svc := service.NewShortenerService(deps.Repo)
 
 	r := chi.NewRouter()
-
 	r.Use(middleware.Decompress)
-
-	r.Use(logger.Logger(zaplogger))
-
+	r.Use(logger.Logger(deps.Logger))
 	// compression level of 5 is sensible value
 	r.Use(chimiddleware.Compress(5, "application/json", "text/html"))
 
-	r.Post("/", handler.PostHandler(svc, baseURL))
-	r.Post("/api/shorten", handler.PostJSONHandler(svc, baseURL))
+	r.Post("/", handler.PostHandler(svc, deps.BaseURL))
+	r.Post("/api/shorten", handler.PostJSONHandler(svc, deps.BaseURL))
+	r.Post("/api/shorten/batch", handler.BatchShortenHandler(svc, deps.BaseURL))
 	r.Get("/{id}", handler.GetHandler(svc))
+	r.Get("/ping", handler.PingHandler(deps.Repo))
 
 	return r
 }
