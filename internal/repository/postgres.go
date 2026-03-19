@@ -78,7 +78,64 @@ func (r *PostgresRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
-func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+func (r *PostgresRepository) SaveWithUser(shortID, originalURL, userID string) (string, error) {
+	ctx := context.Background()
+
+	var returnedShortID string
+	err := r.db.QueryRow(ctx,
+		"INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING RETURNING short_id",
+		shortID, originalURL, userID,
+	).Scan(&returnedShortID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = r.db.QueryRow(ctx,
+				"SELECT short_id FROM urls WHERE original_url = $1",
+				originalURL,
+			).Scan(&returnedShortID)
+			if err != nil {
+				return "", fmt.Errorf("cannot find existing url: %w", err)
+			}
+			return returnedShortID, ErrURLAlreadyExists
+		}
+		return "", fmt.Errorf("error saving to database: %w", err)
+	}
+
+	return returnedShortID, nil
+}
+
+func (r *PostgresRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	ctx := context.Background()
+
+	rows, err := r.db.Query(ctx,
+		"SELECT short_id, original_url FROM urls WHERE user_id = $1 ORDER BY created_at DESC",
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error querying user urls: %w", err)
+	}
+	defer rows.Close()
+
+	var results []UserURL
+	for rows.Next() {
+		var shortID, originalURL string
+		if err := rows.Scan(&shortID, &originalURL); err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
+		}
+		results = append(results, UserURL{
+			ShortURL:    shortID,
+			OriginalURL: originalURL,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return results, nil
+}
+
+func (r *PostgresRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -86,10 +143,17 @@ func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) 
 	batch := &pgx.Batch{}
 
 	for _, item := range items {
-		batch.Queue(
-			"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
-			item.ShortID, item.OriginalURL,
-		)
+		if userID != "" {
+			batch.Queue(
+				"INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (short_id) DO NOTHING",
+				item.ShortID, item.OriginalURL, userID,
+			)
+		} else {
+			batch.Queue(
+				"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
+				item.ShortID, item.OriginalURL,
+			)
+		}
 	}
 
 	br := r.db.SendBatch(ctx, batch)

@@ -42,17 +42,17 @@ func (m *MockURLRepositoryInterface) EXPECT() *MockURLRepositoryInterfaceMockRec
 }
 
 // BatchSave mocks base method.
-func (m *MockURLRepositoryInterface) BatchSave(ctx context.Context, items []repository.BatchEntry) error {
+func (m *MockURLRepositoryInterface) BatchSave(ctx context.Context, userID string, items []repository.BatchEntry) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BatchSave", ctx, items)
+	ret := m.ctrl.Call(m, "BatchSave", ctx, userID, items)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // BatchSave indicates an expected call of BatchSave.
-func (mr *MockURLRepositoryInterfaceMockRecorder) BatchSave(ctx, items any) *gomock.Call {
+func (mr *MockURLRepositoryInterfaceMockRecorder) BatchSave(ctx, userID, items any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSave", reflect.TypeOf((*MockURLRepositoryInterface)(nil).BatchSave), ctx, items)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSave", reflect.TypeOf((*MockURLRepositoryInterface)(nil).BatchSave), ctx, userID, items)
 }
 
 // Get mocks base method.
@@ -68,6 +68,21 @@ func (m *MockURLRepositoryInterface) Get(shortID string) (string, bool) {
 func (mr *MockURLRepositoryInterfaceMockRecorder) Get(shortID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockURLRepositoryInterface)(nil).Get), shortID)
+}
+
+// GetUserURLs mocks base method.
+func (m *MockURLRepositoryInterface) GetUserURLs(userID string) ([]repository.UserURL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserURLs", userID)
+	ret0, _ := ret[0].([]repository.UserURL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserURLs indicates an expected call of GetUserURLs.
+func (mr *MockURLRepositoryInterfaceMockRecorder) GetUserURLs(userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserURLs", reflect.TypeOf((*MockURLRepositoryInterface)(nil).GetUserURLs), userID)
 }
 
 // Ping mocks base method.
@@ -97,4 +112,19 @@ func (m *MockURLRepositoryInterface) Save(shortID, originalURL string) (string, 
 func (mr *MockURLRepositoryInterfaceMockRecorder) Save(shortID, originalURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockURLRepositoryInterface)(nil).Save), shortID, originalURL)
+}
+
+// SaveWithUser mocks base method.
+func (m *MockURLRepositoryInterface) SaveWithUser(shortID, originalURL, userID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveWithUser", shortID, originalURL, userID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SaveWithUser indicates an expected call of SaveWithUser.
+func (mr *MockURLRepositoryInterfaceMockRecorder) SaveWithUser(shortID, originalURL, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveWithUser", reflect.TypeOf((*MockURLRepositoryInterface)(nil).SaveWithUser), shortID, originalURL, userID)
 }

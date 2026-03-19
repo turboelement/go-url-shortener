@@ -9,11 +9,15 @@ import (
 	"strings"
 
 	"go-url-shortener/internal/logger"
+	"go-url-shortener/internal/middleware"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/service"
 
 	"go.uber.org/zap"
 )
+
+// matches the original_url VARCHAR(4096) field limit in the db
+const MaxOriginalURLLength = 4096
 
 type JSONRequest struct {
 	URL string `json:"url"`
@@ -26,6 +30,13 @@ type JSONResponse struct {
 type BatchRequest []service.BatchItem
 
 type BatchResponse []service.BatchResult
+
+type UserURLsResponse []UserURLItem
+
+type UserURLItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
 
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +57,23 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 			return
 		}
 
-		shortID, err := svc.Shorten(originalURL)
+		if len(originalURL) > MaxOriginalURLLength {
+			log.Error("URL exceeds maximum allowed length",
+				zap.Int("length", len(originalURL)),
+				zap.Int("max", MaxOriginalURLLength),
+			)
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		userID, ok := middleware.GetUserIDFromContext(r)
+		if !ok {
+			log.Error("User ID not found in context")
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		shortID, err := svc.ShortenWithUser(originalURL, userID)
 		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
 
 		if err != nil && !isURLAlreadyExists {
@@ -91,7 +118,23 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 			return
 		}
 
-		shortID, err := svc.Shorten(req.URL)
+		if len(req.URL) > MaxOriginalURLLength {
+			log.Error("URL exceeds maximum allowed length",
+				zap.Int("length", len(req.URL)),
+				zap.Int("max", MaxOriginalURLLength),
+			)
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		userID, ok := middleware.GetUserIDFromContext(r)
+		if !ok {
+			log.Error("User ID not found in context")
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		shortID, err := svc.ShortenWithUser(req.URL, userID)
 		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
 
 		if err != nil && !isURLAlreadyExists {
@@ -135,7 +178,14 @@ func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.Han
 			return
 		}
 
-		results, err := svc.BatchShorten(r.Context(), req)
+		userID, ok := middleware.GetUserIDFromContext(r)
+		if !ok {
+			log.Error("User ID not found in context")
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		results, err := svc.BatchShortenWithUser(r.Context(), userID, req)
 		if err != nil {
 			log.Error("Failed to shorten batch", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -178,6 +228,56 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 
 		w.Header().Set("Location", originalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
+}
+
+func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, ok := middleware.GetUserIDFromContext(r)
+		if !ok {
+			log.Error("User ID not found in context")
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if userID == "" {
+			log.Error("Invalid user ID in cookie")
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		userURLs, err := svc.GetUserURLs(userID)
+		if err != nil {
+			log.Error("Failed to get user URLs", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if len(userURLs) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		response := make(UserURLsResponse, 0, len(userURLs))
+		for _, u := range userURLs {
+			shortURL, err := url.JoinPath(baseURL, u.ShortURL)
+			if err != nil {
+				log.Error("Failed to build short URL", zap.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
+			response = append(response, UserURLItem{
+				ShortURL:    shortURL,
+				OriginalURL: u.OriginalURL,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
 	}
 }
 

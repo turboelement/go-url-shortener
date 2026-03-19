@@ -47,9 +47,10 @@ func main() {
 	}
 
 	router := server.NewRouter(server.RouterDeps{
-		BaseURL: cfg.BaseURL,
-		Logger:  logger,
-		Repo:    repo,
+		BaseURL:      cfg.BaseURL,
+		CookieSecret: cfg.CookieSecret,
+		Logger:       logger,
+		Repo:         repo,
 	})
 
 	srv := &http.Server{

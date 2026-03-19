@@ -15,9 +15,10 @@ import (
 )
 
 type RouterDeps struct {
-	BaseURL string
-	Logger  *zap.Logger
-	Repo    repository.URLRepositoryInterface
+	BaseURL      string
+	CookieSecret string
+	Logger       *zap.Logger
+	Repo         repository.URLRepositoryInterface
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -29,11 +30,14 @@ func NewRouter(deps RouterDeps) http.Handler {
 	// compression level of 5 is sensible value
 	r.Use(chimiddleware.Compress(5, "application/json", "text/html"))
 
+	r.Use(middleware.AuthMiddleware(deps.CookieSecret, deps.Logger))
+
 	r.Post("/", handler.PostHandler(svc, deps.BaseURL))
 	r.Post("/api/shorten", handler.PostJSONHandler(svc, deps.BaseURL))
 	r.Post("/api/shorten/batch", handler.BatchShortenHandler(svc, deps.BaseURL))
 	r.Get("/{id}", handler.GetHandler(svc))
 	r.Get("/ping", handler.PingHandler(deps.Repo))
+	r.Get("/api/user/urls", handler.GetUserURLsHandler(svc, deps.BaseURL))
 
 	return r
 }

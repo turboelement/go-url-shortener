@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,11 +15,25 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"go-url-shortener/internal/auth"
+	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/repository/mocks"
 	"go-url-shortener/internal/service"
 )
 
-const testBaseURL = "http://localhost:8080"
+const (
+	testBaseURL = "http://localhost:8080"
+	testUserID  = "test-user-id-12345"
+)
+
+func userIDMiddleware(userID string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), auth.UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
 
 func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryInterface) {
 	t.Helper()
@@ -29,11 +44,15 @@ func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryIn
 	svc := service.NewShortenerService(mockRepo)
 
 	r := chi.NewRouter()
+
+	r.Use(userIDMiddleware(testUserID))
+
 	r.Post("/", PostHandler(svc, testBaseURL))
 	r.Post("/api/shorten", PostJSONHandler(svc, testBaseURL))
 	r.Post("/api/shorten/batch", BatchShortenHandler(svc, testBaseURL))
 	r.Get("/{id}", GetHandler(svc))
 	r.Get("/ping", PingHandler(mockRepo))
+	r.Get("/api/user/urls", GetUserURLsHandler(svc, testBaseURL))
 
 	//NewServeMux specific: ServeMux returns 405 Method Not Allowed for unknown routes
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -89,8 +108,7 @@ func TestPostHandler(t *testing.T) {
 			trimmed := strings.TrimSpace(tt.body)
 			if trimmed != "" {
 				mockRepo.EXPECT().Get(gomock.Any()).Return("", false).AnyTimes()
-
-				mockRepo.EXPECT().Save(gomock.Any(), trimmed).Times(1)
+				mockRepo.EXPECT().SaveWithUser(gomock.Any(), trimmed, testUserID).Times(1)
 			}
 
 			req := client.R().
@@ -190,7 +208,7 @@ func TestPostJSONHandler(t *testing.T) {
 
 			if tt.want.code == http.StatusCreated {
 				mockRepo.EXPECT().Get(gomock.Any()).Return("", false).AnyTimes()
-				mockRepo.EXPECT().Save(gomock.Any(), tt.body.(map[string]string)["url"]).Times(1)
+				mockRepo.EXPECT().SaveWithUser(gomock.Any(), tt.body.(map[string]string)["url"], testUserID).Times(1)
 			}
 
 			resp, err := client.R().
@@ -240,7 +258,7 @@ func TestBatchShortenHandler(t *testing.T) {
 					Times(2)
 
 				mockRepo.EXPECT().
-					BatchSave(gomock.Any(), gomock.Len(2)).
+					BatchSave(gomock.Any(), testUserID, gomock.Len(2)).
 					Return(nil).
 					Times(1)
 			},
@@ -395,6 +413,81 @@ func TestPingHandler(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCode, resp.StatusCode())
+		})
+	}
+}
+
+func TestGetUserURLsHandler(t *testing.T) {
+	ts, mockRepo := setupTestServer(t)
+	defer ts.Close()
+
+	client := resty.New()
+	client.SetBaseURL(ts.URL)
+
+	type want struct {
+		code  int
+		count int
+	}
+
+	tests := []struct {
+		name      string
+		userID    string
+		urls      []repository.UserURL
+		want      want
+		setupMock func(*mocks.MockURLRepositoryInterface, string, []repository.UserURL)
+	}{
+		{
+			name:   "positive test — user has urls",
+			userID: testUserID,
+			urls: []repository.UserURL{
+				{ShortURL: "abc123", OriginalURL: "https://example.com"},
+				{ShortURL: "def456", OriginalURL: "https://google.com"},
+			},
+			want: want{
+				code:  http.StatusOK,
+				count: 2,
+			},
+			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface, userID string, urls []repository.UserURL) {
+				mockRepo.EXPECT().GetUserURLs(userID).Return(urls, nil).Times(1)
+			},
+		},
+		{
+			name:   "no content — user has no urls",
+			userID: testUserID,
+			urls:   []repository.UserURL{},
+			want: want{
+				code:  http.StatusNoContent,
+				count: 0,
+			},
+			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface, userID string, urls []repository.UserURL) {
+				mockRepo.EXPECT().GetUserURLs(userID).Return(urls, nil).Times(1)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Helper()
+			tt.setupMock(mockRepo, tt.userID, tt.urls)
+
+			resp, err := client.R().
+				Get("/api/user/urls")
+
+			require.NoError(t, err, "request failed")
+			assert.Equal(t, tt.want.code, resp.StatusCode(), "status code mismatch")
+
+			if tt.want.code == http.StatusOK {
+				var result UserURLsResponse
+				err := json.Unmarshal(resp.Body(), &result)
+				require.NoError(t, err, "failed to unmarshal response")
+				assert.Equal(t, tt.want.count, len(result), "urls count mismatch")
+
+				for i, item := range result {
+					assert.NotEmpty(t, item.ShortURL)
+					assert.NotEmpty(t, item.OriginalURL)
+					assert.Equal(t, tt.urls[i].OriginalURL, item.OriginalURL)
+				}
+			}
 		})
 	}
 }

@@ -61,6 +61,29 @@ func (s *ShortenerService) Shorten(originalURL string) (string, error) {
 	return storedShortID, nil
 }
 
+func (s *ShortenerService) ShortenWithUser(originalURL, userID string) (string, error) {
+	// TODO: validate url
+	shortID := s.GenerateShortID()
+
+	for {
+		_, exists := s.repo.Get(shortID)
+		if !exists {
+			break
+		}
+		shortID = s.GenerateShortID()
+	}
+
+	storedShortID, err := s.repo.SaveWithUser(shortID, originalURL, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrURLAlreadyExists) {
+			return storedShortID, repository.ErrURLAlreadyExists
+		}
+		return "", err
+	}
+
+	return storedShortID, nil
+}
+
 func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) ([]BatchResult, error) {
 	if len(items) == 0 {
 		return nil, errors.New("empty batch")
@@ -94,7 +117,47 @@ func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) 
 		})
 	}
 
-	if err := s.repo.BatchSave(ctx, batchEntries); err != nil {
+	if err := s.repo.BatchSave(ctx, "", batchEntries); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (s *ShortenerService) BatchShortenWithUser(ctx context.Context, userID string, items []BatchItem) ([]BatchResult, error) {
+	if len(items) == 0 {
+		return nil, errors.New("empty batch")
+	}
+
+	batchEntries := make([]repository.BatchEntry, 0, len(items))
+	results := make([]BatchResult, 0, len(items))
+
+	for _, item := range items {
+		if item.OriginalURL == "" || item.CorrelationID == "" {
+			return nil, errors.New("invalid item")
+		}
+
+		shortID := s.GenerateShortID()
+		for {
+			_, exists := s.repo.Get(shortID)
+			if !exists {
+				break
+			}
+			shortID = s.GenerateShortID()
+		}
+
+		batchEntries = append(batchEntries, repository.BatchEntry{
+			ShortID:     shortID,
+			OriginalURL: item.OriginalURL,
+		})
+
+		results = append(results, BatchResult{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      shortID,
+		})
+	}
+
+	if err := s.repo.BatchSave(ctx, userID, batchEntries); err != nil {
 		return nil, err
 	}
 
@@ -103,4 +166,8 @@ func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) 
 
 func (s *ShortenerService) GetOriginalURL(shortID string) (string, bool) {
 	return s.repo.Get(shortID)
+}
+
+func (s *ShortenerService) GetUserURLs(userID string) ([]repository.UserURL, error) {
+	return s.repo.GetUserURLs(userID)
 }

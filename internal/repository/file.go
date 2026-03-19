@@ -21,6 +21,7 @@ type FileEntry struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id,omitempty"`
 }
 
 func NewFileURLRepository(filePath string) *FileURLRepository {
@@ -72,11 +73,48 @@ func (r *FileURLRepository) Save(shortID, originalURL string) (string, error) {
 	return storedID, nil
 }
 
+func (r *FileURLRepository) SaveWithUser(shortID, originalURL, userID string) (string, error) {
+	storedID, err := r.URLRepository.SaveWithUser(shortID, originalURL, userID)
+	if err != nil {
+		if errors.Is(err, ErrURLAlreadyExists) {
+			return storedID, err
+		}
+		return "", err
+	}
+
+	if r.file == nil {
+		return storedID, nil
+	}
+
+	entry := FileEntry{
+		UUID:        uuid.NewString(),
+		ShortURL:    shortID,
+		OriginalURL: originalURL,
+		UserID:      userID,
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return "", fmt.Errorf("error marshaling to json: %w", err)
+	}
+
+	_, err = r.file.Write(append(data, '\n'))
+	if err != nil {
+		return "", fmt.Errorf("error writing to file: %w", err)
+	}
+
+	return storedID, nil
+}
+
+func (r *FileURLRepository) GetUserURLs(userID string) ([]UserURL, error) {
+	return r.URLRepository.GetUserURLs(userID)
+}
+
 func (r *FileURLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -88,11 +126,16 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) e
 		r.store[item.ShortID] = item.OriginalURL
 		r.rev[item.OriginalURL] = item.ShortID
 
+		if userID != "" {
+			r.users[userID] = append(r.users[userID], item.ShortID)
+		}
+
 		if r.file != nil {
 			entry := FileEntry{
 				UUID:        uuid.NewString(),
 				ShortURL:    item.ShortID,
 				OriginalURL: item.OriginalURL,
+				UserID:      userID,
 			}
 
 			data, err := json.Marshal(entry)
@@ -139,6 +182,10 @@ func (r *FileURLRepository) loadFromFile() {
 		if entry.ShortURL != "" && entry.OriginalURL != "" {
 			r.store[entry.ShortURL] = entry.OriginalURL
 			r.rev[entry.OriginalURL] = entry.ShortURL
+
+			if entry.UserID != "" {
+				r.users[entry.UserID] = append(r.users[entry.UserID], entry.ShortURL)
+			}
 		}
 	}
 }
