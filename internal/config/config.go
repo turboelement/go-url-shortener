@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 type Config struct {
@@ -24,7 +26,6 @@ const (
 	defaultServerAddr      = ":8080"
 	defaultBaseURL         = "http://localhost:8080"
 	defaultFileStoragePath = "./urls.json"
-	defaultCookieSecret    = "default-secret-key"
 )
 
 func New() *Config {
@@ -33,7 +34,7 @@ func New() *Config {
 		BaseURL:         defaultBaseURL,
 		FileStoragePath: defaultFileStoragePath,
 		DatabaseDSN:     "",
-		CookieSecret:    defaultCookieSecret,
+		CookieSecret:    "",
 	}
 
 	// parsing flags
@@ -72,7 +73,7 @@ func New() *Config {
 	}
 
 	if cfg.CookieSecret == "" {
-		cfg.CookieSecret = defaultCookieSecret
+		cfg.CookieSecret = uuid.NewString()
 	}
 
 	return cfg

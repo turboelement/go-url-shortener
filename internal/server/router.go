@@ -38,6 +38,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/{id}", handler.GetHandler(svc))
 	r.Get("/ping", handler.PingHandler(deps.Repo))
 	r.Get("/api/user/urls", handler.GetUserURLsHandler(svc, deps.BaseURL))
+	r.Delete("/api/user/urls", handler.DeleteUserURLsHandler(svc))
 
 	return r
 }

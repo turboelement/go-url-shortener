@@ -61,17 +61,24 @@ func (r *PostgresRepository) Save(shortID, originalURL string) (string, error) {
 	return returnedShortID, nil
 }
 
-func (r *PostgresRepository) Get(shortID string) (string, bool) {
+func (r *PostgresRepository) Get(shortID string) (string, error) {
 	ctx := context.Background()
 	var originalURL string
+	var isDeleted bool
 	err := r.db.QueryRow(ctx,
-		"SELECT original_url FROM urls WHERE short_id = $1",
+		"SELECT original_url, is_deleted FROM urls WHERE short_id = $1",
 		shortID,
-	).Scan(&originalURL)
+	).Scan(&originalURL, &isDeleted)
 	if err != nil {
-		return "", false
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrURLNotFound
+		}
+		return "", err
 	}
-	return originalURL, true
+	if isDeleted {
+		return "", ErrURLMarkedAsDeleted
+	}
+	return originalURL, nil
 }
 
 func (r *PostgresRepository) Ping(ctx context.Context) error {
@@ -108,7 +115,7 @@ func (r *PostgresRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	ctx := context.Background()
 
 	rows, err := r.db.Query(ctx,
-		"SELECT short_id, original_url FROM urls WHERE user_id = $1 ORDER BY created_at DESC",
+		"SELECT short_id, original_url FROM urls WHERE user_id = $1 AND is_deleted = false ORDER BY created_at DESC",
 		userID,
 	)
 	if err != nil {
@@ -162,6 +169,32 @@ func (r *PostgresRepository) BatchSave(ctx context.Context, userID string, items
 	for range items {
 		if _, err := br.Exec(); err != nil {
 			return fmt.Errorf("failed to send batch: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *PostgresRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
+	if len(shortIDs) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+
+	for _, shortID := range shortIDs {
+		batch.Queue(
+			"UPDATE urls SET is_deleted = true WHERE short_id = $1 AND user_id = $2",
+			shortID, userID,
+		)
+	}
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range shortIDs {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("failed to delete url: %w", err)
 		}
 	}
 

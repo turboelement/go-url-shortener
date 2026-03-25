@@ -8,11 +8,12 @@ import (
 //go:generate mockgen --source=repository.go  --destination=mocks/mock_repository.go --package=mocks URLRepositoryInterface
 type URLRepositoryInterface interface {
 	Save(shortID, originalURL string) (string, error)
-	Get(shortID string) (string, bool)
+	Get(shortID string) (string, error)
 	Ping(ctx context.Context) error
 	BatchSave(ctx context.Context, userID string, items []BatchEntry) error
 	SaveWithUser(shortID, originalURL, userID string) (string, error)
 	GetUserURLs(userID string) ([]UserURL, error)
+	DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error
 }
 
 type BatchEntry struct {
@@ -26,3 +27,5 @@ type UserURL struct {
 }
 
 var ErrURLAlreadyExists = errors.New("url already exists")
+var ErrURLMarkedAsDeleted = errors.New("url marked as deleted")
+var ErrURLNotFound = errors.New("url not found")

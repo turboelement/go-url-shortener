@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-resty/resty/v2"
@@ -53,6 +54,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryIn
 	r.Get("/{id}", GetHandler(svc))
 	r.Get("/ping", PingHandler(mockRepo))
 	r.Get("/api/user/urls", GetUserURLsHandler(svc, testBaseURL))
+	r.Delete("/api/user/urls", DeleteUserURLsHandler(svc))
 
 	//NewServeMux specific: ServeMux returns 405 Method Not Allowed for unknown routes
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -107,8 +109,8 @@ func TestPostHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trimmed := strings.TrimSpace(tt.body)
 			if trimmed != "" {
-				mockRepo.EXPECT().Get(gomock.Any()).Return("", false).AnyTimes()
-				mockRepo.EXPECT().SaveWithUser(gomock.Any(), trimmed, testUserID).Times(1)
+				mockRepo.EXPECT().Get(gomock.Any()).Return("", repository.ErrURLNotFound).AnyTimes()
+				mockRepo.EXPECT().SaveWithUser(gomock.Any(), trimmed, testUserID).Return("", nil).Times(1)
 			}
 
 			req := client.R().
@@ -207,8 +209,8 @@ func TestPostJSONHandler(t *testing.T) {
 			}
 
 			if tt.want.code == http.StatusCreated {
-				mockRepo.EXPECT().Get(gomock.Any()).Return("", false).AnyTimes()
-				mockRepo.EXPECT().SaveWithUser(gomock.Any(), tt.body.(map[string]string)["url"], testUserID).Times(1)
+				mockRepo.EXPECT().Get(gomock.Any()).Return("", repository.ErrURLNotFound).AnyTimes()
+				mockRepo.EXPECT().SaveWithUser(gomock.Any(), tt.body.(map[string]string)["url"], testUserID).Return("", nil).Times(1)
 			}
 
 			resp, err := client.R().
@@ -254,7 +256,7 @@ func TestBatchShortenHandler(t *testing.T) {
 			setupMocks: func() {
 				mockRepo.EXPECT().
 					Get(gomock.Any()).
-					Return("", false).
+					Return("", repository.ErrURLNotFound).
 					Times(2)
 
 				mockRepo.EXPECT().
@@ -365,7 +367,7 @@ func TestGetHandler(t *testing.T) {
 			path := "/"
 			if tt.originalURL != "" {
 				shortID := "test123"
-				mockRepo.EXPECT().Get(shortID).Return(tt.want.location, true).Times(1)
+				mockRepo.EXPECT().Get(shortID).Return(tt.want.location, nil).Times(1)
 				path = "/" + shortID
 			}
 
@@ -487,6 +489,68 @@ func TestGetUserURLsHandler(t *testing.T) {
 					assert.NotEmpty(t, item.OriginalURL)
 					assert.Equal(t, tt.urls[i].OriginalURL, item.OriginalURL)
 				}
+			}
+		})
+	}
+}
+
+func TestDeleteUserURLsHandler(t *testing.T) {
+	ts, mockRepo := setupTestServer(t)
+	defer ts.Close()
+
+	client := resty.New()
+	client.SetBaseURL(ts.URL)
+
+	tests := []struct {
+		name      string
+		shortIDs  []string
+		wantCode  int
+		setupMock func(*mocks.MockURLRepositoryInterface, []string)
+	}{
+		{
+			name:     "positive test — delete multiple URLs",
+			shortIDs: []string{"abc123", "def456"},
+			wantCode: http.StatusAccepted,
+			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface, shortIDs []string) {
+				mockRepo.EXPECT().
+					DeleteUserURLs(gomock.Any(), testUserID, shortIDs).
+					Return(nil).
+					AnyTimes()
+			},
+		},
+		{
+			name:      "empty list",
+			shortIDs:  []string{},
+			wantCode:  http.StatusBadRequest,
+			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface, shortIDs []string) {},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setupMock(mockRepo, tt.shortIDs)
+
+			var resp *resty.Response
+			var err error
+
+			if tt.name == "empty list" {
+				resp, err = client.R().
+					SetHeader("Content-Type", "application/json").
+					SetBody([]string{}).
+					Delete("/api/user/urls")
+			} else {
+				resp, err = client.R().
+					SetHeader("Content-Type", "application/json").
+					SetBody(tt.shortIDs).
+					Delete("/api/user/urls")
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCode, resp.StatusCode())
+
+			// Give async goroutine time to execute
+			if tt.wantCode == http.StatusAccepted {
+				time.Sleep(100 * time.Millisecond)
 			}
 		})
 	}

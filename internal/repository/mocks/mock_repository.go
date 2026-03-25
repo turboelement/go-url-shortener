@@ -55,12 +55,26 @@ func (mr *MockURLRepositoryInterfaceMockRecorder) BatchSave(ctx, userID, items a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSave", reflect.TypeOf((*MockURLRepositoryInterface)(nil).BatchSave), ctx, userID, items)
 }
 
+// DeleteUserURLs mocks base method.
+func (m *MockURLRepositoryInterface) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUserURLs", ctx, userID, shortIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteUserURLs indicates an expected call of DeleteUserURLs.
+func (mr *MockURLRepositoryInterfaceMockRecorder) DeleteUserURLs(ctx, userID, shortIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserURLs", reflect.TypeOf((*MockURLRepositoryInterface)(nil).DeleteUserURLs), ctx, userID, shortIDs)
+}
+
 // Get mocks base method.
-func (m *MockURLRepositoryInterface) Get(shortID string) (string, bool) {
+func (m *MockURLRepositoryInterface) Get(shortID string) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", shortID)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
+	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 

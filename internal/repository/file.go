@@ -22,6 +22,7 @@ type FileEntry struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 	UserID      string `json:"user_id,omitempty"`
+	DeletedFlag bool   `json:"deleted_flag,omitempty"`
 }
 
 func NewFileURLRepository(filePath string) *FileURLRepository {
@@ -110,6 +111,10 @@ func (r *FileURLRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	return r.URLRepository.GetUserURLs(userID)
 }
 
+func (r *FileURLRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
+	return r.URLRepository.DeleteUserURLs(ctx, userID, shortIDs)
+}
+
 func (r *FileURLRepository) Ping(ctx context.Context) error {
 	return nil
 }
@@ -123,12 +128,12 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items 
 			continue
 		}
 
-		r.store[item.ShortID] = item.OriginalURL
-		r.rev[item.OriginalURL] = item.ShortID
-
-		if userID != "" {
-			r.users[userID] = append(r.users[userID], item.ShortID)
+		r.store[item.ShortID] = &URLEntry{
+			ShortID:     item.ShortID,
+			OriginalURL: item.OriginalURL,
+			UserID:      userID,
 		}
+		r.rev[item.OriginalURL] = item.ShortID
 
 		if r.file != nil {
 			entry := FileEntry{
@@ -180,12 +185,13 @@ func (r *FileURLRepository) loadFromFile() {
 		}
 
 		if entry.ShortURL != "" && entry.OriginalURL != "" {
-			r.store[entry.ShortURL] = entry.OriginalURL
-			r.rev[entry.OriginalURL] = entry.ShortURL
-
-			if entry.UserID != "" {
-				r.users[entry.UserID] = append(r.users[entry.UserID], entry.ShortURL)
+			r.store[entry.ShortURL] = &URLEntry{
+				ShortID:     entry.ShortURL,
+				OriginalURL: entry.OriginalURL,
+				UserID:      entry.UserID,
+				DeletedFlag: entry.DeletedFlag,
 			}
+			r.rev[entry.OriginalURL] = entry.ShortURL
 		}
 	}
 }

@@ -5,18 +5,23 @@ import (
 	"sync"
 )
 
+type URLEntry struct {
+	ShortID     string
+	OriginalURL string
+	UserID      string
+	DeletedFlag bool
+}
+
 type URLRepository struct {
-	store map[string]string   // shortID | originalURL
-	rev   map[string]string   // reverse originalURL | shortID
-	users map[string][]string // userID | []shortID
+	store map[string]*URLEntry // shortID | URLEntry
+	rev   map[string]string    // reverse originalURL | shortID
 	mu    sync.RWMutex
 }
 
 func NewURLRepository() *URLRepository {
 	return &URLRepository{
-		store: make(map[string]string),
+		store: make(map[string]*URLEntry),
 		rev:   make(map[string]string),
-		users: make(map[string][]string),
 		// mu no need to init — zero value sync.RWMutex is ready to use
 	}
 }
@@ -29,18 +34,27 @@ func (r *URLRepository) Save(shortID, originalURL string) (string, error) {
 		return storedID, ErrURLAlreadyExists
 	}
 
-	r.store[shortID] = originalURL
+	r.store[shortID] = &URLEntry{
+		ShortID:     shortID,
+		OriginalURL: originalURL,
+	}
 	r.rev[originalURL] = shortID
 
 	return shortID, nil
 }
 
-func (r *URLRepository) Get(shortID string) (string, bool) {
+func (r *URLRepository) Get(shortID string) (string, error) {
 	r.mu.RLock() // allows parralel Get
 	defer r.mu.RUnlock()
 
-	url, ok := r.store[shortID]
-	return url, ok
+	entry, ok := r.store[shortID]
+	if !ok {
+		return "", ErrURLNotFound
+	}
+	if entry.DeletedFlag {
+		return "", ErrURLMarkedAsDeleted
+	}
+	return entry.OriginalURL, nil
 }
 
 func (r *URLRepository) Ping(ctx context.Context) error {
@@ -55,9 +69,12 @@ func (r *URLRepository) SaveWithUser(shortID, originalURL, userID string) (strin
 		return storedID, ErrURLAlreadyExists
 	}
 
-	r.store[shortID] = originalURL
+	r.store[shortID] = &URLEntry{
+		ShortID:     shortID,
+		OriginalURL: originalURL,
+		UserID:      userID,
+	}
 	r.rev[originalURL] = shortID
-	r.users[userID] = append(r.users[userID], shortID)
 
 	return shortID, nil
 }
@@ -66,17 +83,12 @@ func (r *URLRepository) GetUserURLs(userID string) ([]UserURL, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	shortIDs, exists := r.users[userID]
-	if !exists || len(shortIDs) == 0 {
-		return []UserURL{}, nil
-	}
-
-	result := make([]UserURL, 0, len(shortIDs))
-	for _, shortID := range shortIDs {
-		if originalURL, ok := r.store[shortID]; ok {
+	result := make([]UserURL, 0)
+	for _, entry := range r.store {
+		if entry.UserID == userID && !entry.DeletedFlag {
 			result = append(result, UserURL{
-				ShortURL:    shortID,
-				OriginalURL: originalURL,
+				ShortURL:    entry.ShortID,
+				OriginalURL: entry.OriginalURL,
 			})
 		}
 	}
@@ -90,12 +102,25 @@ func (r *URLRepository) BatchSave(ctx context.Context, userID string, items []Ba
 
 	for _, item := range items {
 		if _, exists := r.rev[item.OriginalURL]; !exists {
-			r.store[item.ShortID] = item.OriginalURL
-			r.rev[item.OriginalURL] = item.ShortID
-
-			if userID != "" {
-				r.users[userID] = append(r.users[userID], item.ShortID)
+			r.store[item.ShortID] = &URLEntry{
+				ShortID:     item.ShortID,
+				OriginalURL: item.OriginalURL,
+				UserID:      userID,
 			}
+			r.rev[item.OriginalURL] = item.ShortID
+		}
+	}
+
+	return nil
+}
+
+func (r *URLRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, shortID := range shortIDs {
+		if entry, ok := r.store[shortID]; ok && entry.UserID == userID {
+			entry.DeletedFlag = true
 		}
 	}
 

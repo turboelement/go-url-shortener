@@ -219,8 +219,24 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 			return
 		}
 
-		originalURL, found := svc.GetOriginalURL(id)
-		if !found {
+		originalURL, err := svc.GetOriginalURL(id)
+		if err != nil {
+			if errors.Is(err, repository.ErrURLMarkedAsDeleted) {
+				log.Error("Short URL marked as deleted")
+				http.Error(w, http.StatusText(http.StatusGone), http.StatusGone)
+				return
+			}
+			if errors.Is(err, repository.ErrURLNotFound) {
+				log.Error("Short URL not found")
+				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+				return
+			}
+			log.Error("Error getting URL", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if originalURL == "" {
 			log.Error("Short URL not found")
 			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
@@ -278,6 +294,40 @@ func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.Hand
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(response)
+	}
+}
+
+func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, ok := middleware.GetUserIDFromContext(r)
+		if !ok || userID == "" {
+			log.Error("User ID not found in context")
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var shortIDs []string
+		if err := json.NewDecoder(r.Body).Decode(&shortIDs); err != nil {
+			log.Error("Invalid JSON", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		if len(shortIDs) == 0 {
+			log.Error("Empty short IDs list")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		// if err := svc.DeleteUserURLs(r.Context(), userID, shortIDs); err != nil {
+		// 	log.Error("Failed to delete URLs", zap.Error(err))
+		// }
+
+		svc.DeleteUserURLsAsync(userID, shortIDs)
+
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 
