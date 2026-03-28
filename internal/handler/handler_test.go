@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,7 +29,7 @@ const (
 func userIDMiddleware(userID string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), auth.UserIDKey, userID)
+			ctx := auth.SetUserIDInContext(r.Context(), userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -109,8 +108,8 @@ func TestPostHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trimmed := strings.TrimSpace(tt.body)
 			if trimmed != "" {
-				mockRepo.EXPECT().Get(gomock.Any()).Return("", repository.ErrURLNotFound).AnyTimes()
-				mockRepo.EXPECT().SaveWithUser(gomock.Any(), trimmed, testUserID).Return("", nil).Times(1)
+				mockRepo.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", repository.ErrURLNotFound).AnyTimes()
+				mockRepo.EXPECT().SaveWithUser(gomock.Any(), gomock.Any(), trimmed, testUserID).Return("", nil).Times(1)
 			}
 
 			req := client.R().
@@ -209,8 +208,8 @@ func TestPostJSONHandler(t *testing.T) {
 			}
 
 			if tt.want.code == http.StatusCreated {
-				mockRepo.EXPECT().Get(gomock.Any()).Return("", repository.ErrURLNotFound).AnyTimes()
-				mockRepo.EXPECT().SaveWithUser(gomock.Any(), tt.body.(map[string]string)["url"], testUserID).Return("", nil).Times(1)
+				mockRepo.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", repository.ErrURLNotFound).AnyTimes()
+				mockRepo.EXPECT().SaveWithUser(gomock.Any(), gomock.Any(), tt.body.(map[string]string)["url"], testUserID).Return("", nil).Times(1)
 			}
 
 			resp, err := client.R().
@@ -255,7 +254,7 @@ func TestBatchShortenHandler(t *testing.T) {
 			wantLen:    2,
 			setupMocks: func() {
 				mockRepo.EXPECT().
-					Get(gomock.Any()).
+					Get(gomock.Any(), gomock.Any()).
 					Return("", repository.ErrURLNotFound).
 					Times(2)
 
@@ -367,7 +366,7 @@ func TestGetHandler(t *testing.T) {
 			path := "/"
 			if tt.originalURL != "" {
 				shortID := "test123"
-				mockRepo.EXPECT().Get(shortID).Return(tt.want.location, nil).Times(1)
+				mockRepo.EXPECT().Get(gomock.Any(), shortID).Return(tt.want.location, nil).Times(1)
 				path = "/" + shortID
 			}
 
@@ -450,7 +449,7 @@ func TestGetUserURLsHandler(t *testing.T) {
 				count: 2,
 			},
 			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface, userID string, urls []repository.UserURL) {
-				mockRepo.EXPECT().GetUserURLs(userID).Return(urls, nil).Times(1)
+				mockRepo.EXPECT().GetUserURLs(gomock.Any(), userID).Return(urls, nil).Times(1)
 			},
 		},
 		{
@@ -462,7 +461,7 @@ func TestGetUserURLsHandler(t *testing.T) {
 				count: 0,
 			},
 			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface, userID string, urls []repository.UserURL) {
-				mockRepo.EXPECT().GetUserURLs(userID).Return(urls, nil).Times(1)
+				mockRepo.EXPECT().GetUserURLs(gomock.Any(), userID).Return(urls, nil).Times(1)
 			},
 		},
 	}

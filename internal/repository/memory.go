@@ -26,7 +26,7 @@ func NewURLRepository() *URLRepository {
 	}
 }
 
-func (r *URLRepository) Save(shortID, originalURL string) (string, error) {
+func (r *URLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (r *URLRepository) Save(shortID, originalURL string) (string, error) {
 	return shortID, nil
 }
 
-func (r *URLRepository) Get(shortID string) (string, error) {
+func (r *URLRepository) Get(ctx context.Context, shortID string) (string, error) {
 	r.mu.RLock() // allows parralel Get
 	defer r.mu.RUnlock()
 
@@ -61,7 +61,7 @@ func (r *URLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (r *URLRepository) SaveWithUser(shortID, originalURL, userID string) (string, error) {
+func (r *URLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -79,7 +79,7 @@ func (r *URLRepository) SaveWithUser(shortID, originalURL, userID string) (strin
 	return shortID, nil
 }
 
-func (r *URLRepository) GetUserURLs(userID string) ([]UserURL, error) {
+func (r *URLRepository) GetUserURLs(ctx context.Context, userID string) ([]UserURL, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

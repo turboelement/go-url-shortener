@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 
 	"go-url-shortener/internal/auth"
@@ -28,7 +27,11 @@ func AuthMiddleware(secret string, logger *zap.Logger) func(http.Handler) http.H
 					return
 				}
 				userID = newUserID
-				auth.SetAuthCookie(w, userID, secret)
+				if err := auth.SetAuthCookie(w, userID, secret); err != nil {
+					logger.Error("Failed to set auth cookie", zap.Error(err))
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
 				logger.Info("Generated new user ID", zap.String("user_id", userID))
 			} else if userID == "" {
 				newUserID, err := auth.GenerateUserID()
@@ -38,17 +41,20 @@ func AuthMiddleware(secret string, logger *zap.Logger) func(http.Handler) http.H
 					return
 				}
 				userID = newUserID
-				auth.SetAuthCookie(w, userID, secret)
+				if err := auth.SetAuthCookie(w, userID, secret); err != nil {
+					logger.Error("Failed to set auth cookie", zap.Error(err))
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
 				logger.Info("Invalid cookie signature, generated new user ID", zap.String("user_id", userID))
 			}
 
-			ctx := context.WithValue(r.Context(), auth.UserIDKey, userID)
+			ctx := auth.SetUserIDInContext(r.Context(), userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-func GetUserIDFromContext(r *http.Request) (string, bool) {
-	userID, ok := r.Context().Value(auth.UserIDKey).(string)
-	return userID, ok
+func GetUserIDFromContext(r *http.Request) (string, error) {
+	return auth.GetUserIDFromContext(r.Context())
 }

@@ -7,12 +7,12 @@ import (
 
 //go:generate mockgen --source=repository.go  --destination=mocks/mock_repository.go --package=mocks URLRepositoryInterface
 type URLRepositoryInterface interface {
-	Save(shortID, originalURL string) (string, error)
-	Get(shortID string) (string, error)
+	Save(ctx context.Context, shortID, originalURL string) (string, error)
+	Get(ctx context.Context, shortID string) (string, error)
 	Ping(ctx context.Context) error
 	BatchSave(ctx context.Context, userID string, items []BatchEntry) error
-	SaveWithUser(shortID, originalURL, userID string) (string, error)
-	GetUserURLs(userID string) ([]UserURL, error)
+	SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error)
+	GetUserURLs(ctx context.Context, userID string) ([]UserURL, error)
 	DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error
 }
 

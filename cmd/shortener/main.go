@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"go-url-shortener/internal/config"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
+	"go-url-shortener/internal/service"
 
 	"go.uber.org/zap"
 )
@@ -46,11 +51,15 @@ func main() {
 		repo = repository.NewURLRepository()
 	}
 
+	svc := service.NewShortenerService(repo)
+	defer svc.Close()
+
 	router := server.NewRouter(server.RouterDeps{
 		BaseURL:      cfg.BaseURL,
 		CookieSecret: cfg.CookieSecret,
 		Logger:       logger,
 		Repo:         repo,
+		Svc:          svc,
 	})
 
 	srv := &http.Server{
@@ -64,7 +73,23 @@ func main() {
 		zap.String("address", cfg.BaseURL),
 	)
 
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("server failed", zap.Error(err))
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("server starting failed", zap.Error(err))
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+	logger.Info("Server shutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("server shutdown failed", zap.Error(err))
 	}
+
+	logger.Info("Server stopped")
 }

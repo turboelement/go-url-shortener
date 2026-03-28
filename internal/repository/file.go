@@ -42,8 +42,8 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 	return repo
 }
 
-func (r *FileURLRepository) Save(shortID, originalURL string) (string, error) {
-	storedID, err := r.URLRepository.Save(shortID, originalURL)
+func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
+	storedID, err := r.URLRepository.Save(ctx, shortID, originalURL)
 	if err != nil {
 		if errors.Is(err, ErrURLAlreadyExists) {
 			return storedID, err
@@ -74,8 +74,8 @@ func (r *FileURLRepository) Save(shortID, originalURL string) (string, error) {
 	return storedID, nil
 }
 
-func (r *FileURLRepository) SaveWithUser(shortID, originalURL, userID string) (string, error) {
-	storedID, err := r.URLRepository.SaveWithUser(shortID, originalURL, userID)
+func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
+	storedID, err := r.URLRepository.SaveWithUser(ctx, shortID, originalURL, userID)
 	if err != nil {
 		if errors.Is(err, ErrURLAlreadyExists) {
 			return storedID, err
@@ -105,14 +105,6 @@ func (r *FileURLRepository) SaveWithUser(shortID, originalURL, userID string) (s
 	}
 
 	return storedID, nil
-}
-
-func (r *FileURLRepository) GetUserURLs(userID string) ([]UserURL, error) {
-	return r.URLRepository.GetUserURLs(userID)
-}
-
-func (r *FileURLRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
-	return r.URLRepository.DeleteUserURLs(ctx, userID, shortIDs)
 }
 
 func (r *FileURLRepository) Ping(ctx context.Context) error {

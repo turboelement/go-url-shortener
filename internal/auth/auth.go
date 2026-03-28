@@ -1,14 +1,12 @@
 package auth
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -25,35 +23,50 @@ func GenerateUserID() (string, error) {
 	return id.String(), nil
 }
 
-func SignUserID(userID, secret string) string {
-	h := hmac.New(sha256.New, []byte(secret))
-	h.Write([]byte(userID))
-	signature := hex.EncodeToString(h.Sum(nil))
-	return userID + "." + signature
+type CustomClaims struct {
+	jwt.RegisteredClaims
 }
 
-func VerifyUserID(cookieValue, secret string) (string, bool) {
-	parts := strings.Split(cookieValue, ".")
-	if len(parts) != 2 {
+func SignUserID(userID, secret string) (string, error) {
+	claims := CustomClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(CookieMaxAge)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return signedToken, nil
+}
+
+func VerifyUserID(tokenString, secret string) (string, bool) {
+	claims := &CustomClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(secret), nil
+	})
+
+	if err != nil || !token.Valid {
 		return "", false
 	}
 
-	userID := parts[0]
-	providedSignature := parts[1]
-
-	h := hmac.New(sha256.New, []byte(secret))
-	h.Write([]byte(userID))
-	expectedSignature := hex.EncodeToString(h.Sum(nil))
-
-	if !hmac.Equal([]byte(providedSignature), []byte(expectedSignature)) {
-		return "", false
-	}
-
-	return userID, true
+	return claims.Subject, true
 }
 
-func SetAuthCookie(w http.ResponseWriter, userID, secret string) {
-	signedValue := SignUserID(userID, secret)
+func SetAuthCookie(w http.ResponseWriter, userID, secret string) error {
+	signedValue, err := SignUserID(userID, secret)
+	if err != nil {
+		return err
+	}
 
 	cookie := &http.Cookie{
 		Name:     CookieName,
@@ -66,6 +79,7 @@ func SetAuthCookie(w http.ResponseWriter, userID, secret string) {
 	}
 
 	http.SetCookie(w, cookie)
+	return nil
 }
 
 func GetUserIDFromCookie(r *http.Request, secret string) (string, bool, error) {
@@ -85,6 +99,28 @@ func GetUserIDFromCookie(r *http.Request, secret string) (string, bool, error) {
 	return userID, true, nil
 }
 
-type ContextKey string
+type contextKey string
 
-const UserIDKey ContextKey = "user_id"
+const userIDKey contextKey = "user_id"
+
+func SetUserIDInContext(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
+func GetUserIDFromContext(ctx context.Context) (string, error) {
+	val := ctx.Value(userIDKey)
+	if val == nil {
+		return "", fmt.Errorf("user ID not found in context")
+	}
+
+	userID, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("user ID in context has invalid type: %T, expected string", val)
+	}
+
+	if userID == "" {
+		return "", fmt.Errorf("user ID in context is empty")
+	}
+
+	return userID, nil
+}

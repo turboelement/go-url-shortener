@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"sync"
 	"time"
 
 	"go-url-shortener/internal/logger"
@@ -24,6 +25,10 @@ type deleteTask struct {
 type ShortenerService struct {
 	repo     repository.URLRepositoryInterface
 	deleteCh chan deleteTask
+	doneCh   chan struct{}
+	wg       sync.WaitGroup
+	closed   bool
+	mu       sync.RWMutex
 }
 
 type BatchItem struct {
@@ -40,8 +45,10 @@ func NewShortenerService(repo repository.URLRepositoryInterface) *ShortenerServi
 	s := &ShortenerService{
 		repo:     repo,
 		deleteCh: make(chan deleteTask, 1000),
+		doneCh:   make(chan struct{}),
 	}
 
+	s.wg.Add(1)
 	go s.deleteWorker()
 
 	return s
@@ -55,19 +62,18 @@ func (s *ShortenerService) GenerateShortID() string {
 	return string(b)
 }
 
-func (s *ShortenerService) Shorten(originalURL string) (string, error) {
-	// TODO: validate url
+func (s *ShortenerService) Shorten(ctx context.Context, originalURL string) (string, error) {
 	shortID := s.GenerateShortID()
 
 	for {
-		_, err := s.repo.Get(shortID)
+		_, err := s.repo.Get(ctx, shortID)
 		if err == repository.ErrURLNotFound {
 			break
 		}
 		shortID = s.GenerateShortID()
 	}
 
-	storedShortID, err := s.repo.Save(shortID, originalURL)
+	storedShortID, err := s.repo.Save(ctx, shortID, originalURL)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLAlreadyExists) {
 			return storedShortID, repository.ErrURLAlreadyExists
@@ -78,19 +84,18 @@ func (s *ShortenerService) Shorten(originalURL string) (string, error) {
 	return storedShortID, nil
 }
 
-func (s *ShortenerService) ShortenWithUser(originalURL, userID string) (string, error) {
-	// TODO: validate url
+func (s *ShortenerService) ShortenWithUser(ctx context.Context, originalURL, userID string) (string, error) {
 	shortID := s.GenerateShortID()
 
 	for {
-		_, err := s.repo.Get(shortID)
+		_, err := s.repo.Get(ctx, shortID)
 		if err == repository.ErrURLNotFound {
 			break
 		}
 		shortID = s.GenerateShortID()
 	}
 
-	storedShortID, err := s.repo.SaveWithUser(shortID, originalURL, userID)
+	storedShortID, err := s.repo.SaveWithUser(ctx, shortID, originalURL, userID)
 	if err != nil {
 		if errors.Is(err, repository.ErrURLAlreadyExists) {
 			return storedShortID, repository.ErrURLAlreadyExists
@@ -116,7 +121,7 @@ func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) 
 
 		shortID := s.GenerateShortID()
 		for {
-			_, err := s.repo.Get(shortID)
+			_, err := s.repo.Get(ctx, shortID)
 			if err == repository.ErrURLNotFound {
 				break
 			}
@@ -156,7 +161,7 @@ func (s *ShortenerService) BatchShortenWithUser(ctx context.Context, userID stri
 
 		shortID := s.GenerateShortID()
 		for {
-			_, err := s.repo.Get(shortID)
+			_, err := s.repo.Get(ctx, shortID)
 			if err == repository.ErrURLNotFound {
 				break
 			}
@@ -181,12 +186,12 @@ func (s *ShortenerService) BatchShortenWithUser(ctx context.Context, userID stri
 	return results, nil
 }
 
-func (s *ShortenerService) GetOriginalURL(shortID string) (string, error) {
-	return s.repo.Get(shortID)
+func (s *ShortenerService) GetOriginalURL(ctx context.Context, shortID string) (string, error) {
+	return s.repo.Get(ctx, shortID)
 }
 
-func (s *ShortenerService) GetUserURLs(userID string) ([]repository.UserURL, error) {
-	return s.repo.GetUserURLs(userID)
+func (s *ShortenerService) GetUserURLs(ctx context.Context, userID string) ([]repository.UserURL, error) {
+	return s.repo.GetUserURLs(ctx, userID)
 }
 
 func (s *ShortenerService) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
@@ -197,6 +202,14 @@ func (s *ShortenerService) DeleteUserURLsAsync(userID string, shortIDs []string)
 	if len(shortIDs) == 0 {
 		return
 	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return
+	}
+
 	select {
 	case s.deleteCh <- deleteTask{UserID: userID, ShortIDs: shortIDs}:
 	default:
@@ -204,6 +217,8 @@ func (s *ShortenerService) DeleteUserURLsAsync(userID string, shortIDs []string)
 }
 
 func (s *ShortenerService) deleteWorker() {
+	defer s.wg.Done()
+
 	const (
 		maxBatchSize  = 200
 		flushInterval = 5 * time.Second
@@ -232,6 +247,10 @@ func (s *ShortenerService) deleteWorker() {
 				s.flush(batch)
 				batch = batch[:0]
 			}
+
+		case <-s.doneCh:
+			s.flush(batch)
+			return
 		}
 	}
 }
@@ -247,4 +266,22 @@ func (s *ShortenerService) flush(tasks []deleteTask) {
 			logger.FromContext(ctx).Error("delete worker error", zap.Error(err))
 		}
 	}
+}
+
+func (s *ShortenerService) Close() error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	s.mu.Unlock()
+
+	close(s.doneCh)
+
+	s.wg.Wait()
+
+	close(s.deleteCh)
+
+	return nil
 }

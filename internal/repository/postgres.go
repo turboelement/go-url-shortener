@@ -35,9 +35,7 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	return &PostgresRepository{db: pool}, nil
 }
 
-func (r *PostgresRepository) Save(shortID, originalURL string) (string, error) {
-	ctx := context.Background()
-
+func (r *PostgresRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	var returnedShortID string
 	err := r.db.QueryRow(ctx,
 		"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (original_url) DO NOTHING RETURNING short_id",
@@ -61,8 +59,7 @@ func (r *PostgresRepository) Save(shortID, originalURL string) (string, error) {
 	return returnedShortID, nil
 }
 
-func (r *PostgresRepository) Get(shortID string) (string, error) {
-	ctx := context.Background()
+func (r *PostgresRepository) Get(ctx context.Context, shortID string) (string, error) {
 	var originalURL string
 	var isDeleted bool
 	err := r.db.QueryRow(ctx,
@@ -85,9 +82,7 @@ func (r *PostgresRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
-func (r *PostgresRepository) SaveWithUser(shortID, originalURL, userID string) (string, error) {
-	ctx := context.Background()
-
+func (r *PostgresRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
 	var returnedShortID string
 	err := r.db.QueryRow(ctx,
 		"INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING RETURNING short_id",
@@ -111,9 +106,7 @@ func (r *PostgresRepository) SaveWithUser(shortID, originalURL, userID string) (
 	return returnedShortID, nil
 }
 
-func (r *PostgresRepository) GetUserURLs(userID string) ([]UserURL, error) {
-	ctx := context.Background()
-
+func (r *PostgresRepository) GetUserURLs(ctx context.Context, userID string) ([]UserURL, error) {
 	rows, err := r.db.Query(ctx,
 		"SELECT short_id, original_url FROM urls WHERE user_id = $1 AND is_deleted = false ORDER BY created_at DESC",
 		userID,
