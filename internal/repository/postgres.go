@@ -35,9 +35,7 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	return &PostgresRepository{db: pool}, nil
 }
 
-func (r *PostgresRepository) Save(shortID, originalURL string) (string, error) {
-	ctx := context.Background()
-
+func (r *PostgresRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	var returnedShortID string
 	err := r.db.QueryRow(ctx,
 		"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (original_url) DO NOTHING RETURNING short_id",
@@ -61,24 +59,83 @@ func (r *PostgresRepository) Save(shortID, originalURL string) (string, error) {
 	return returnedShortID, nil
 }
 
-func (r *PostgresRepository) Get(shortID string) (string, bool) {
-	ctx := context.Background()
+func (r *PostgresRepository) Get(ctx context.Context, shortID string) (string, error) {
 	var originalURL string
+	var isDeleted bool
 	err := r.db.QueryRow(ctx,
-		"SELECT original_url FROM urls WHERE short_id = $1",
+		"SELECT original_url, is_deleted FROM urls WHERE short_id = $1",
 		shortID,
-	).Scan(&originalURL)
+	).Scan(&originalURL, &isDeleted)
 	if err != nil {
-		return "", false
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrURLNotFound
+		}
+		return "", err
 	}
-	return originalURL, true
+	if isDeleted {
+		return "", ErrURLMarkedAsDeleted
+	}
+	return originalURL, nil
 }
 
 func (r *PostgresRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
-func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+func (r *PostgresRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
+	var returnedShortID string
+	err := r.db.QueryRow(ctx,
+		"INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING RETURNING short_id",
+		shortID, originalURL, userID,
+	).Scan(&returnedShortID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = r.db.QueryRow(ctx,
+				"SELECT short_id FROM urls WHERE original_url = $1",
+				originalURL,
+			).Scan(&returnedShortID)
+			if err != nil {
+				return "", fmt.Errorf("cannot find existing url: %w", err)
+			}
+			return returnedShortID, ErrURLAlreadyExists
+		}
+		return "", fmt.Errorf("error saving to database: %w", err)
+	}
+
+	return returnedShortID, nil
+}
+
+func (r *PostgresRepository) GetUserURLs(ctx context.Context, userID string) ([]UserURL, error) {
+	rows, err := r.db.Query(ctx,
+		"SELECT short_id, original_url FROM urls WHERE user_id = $1 AND is_deleted = false ORDER BY created_at DESC",
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error querying user urls: %w", err)
+	}
+	defer rows.Close()
+
+	var results []UserURL
+	for rows.Next() {
+		var shortID, originalURL string
+		if err := rows.Scan(&shortID, &originalURL); err != nil {
+			return nil, fmt.Errorf("error scanning row: %w", err)
+		}
+		results = append(results, UserURL{
+			ShortURL:    shortID,
+			OriginalURL: originalURL,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return results, nil
+}
+
+func (r *PostgresRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -86,10 +143,17 @@ func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) 
 	batch := &pgx.Batch{}
 
 	for _, item := range items {
-		batch.Queue(
-			"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
-			item.ShortID, item.OriginalURL,
-		)
+		if userID != "" {
+			batch.Queue(
+				"INSERT INTO urls (short_id, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (short_id) DO NOTHING",
+				item.ShortID, item.OriginalURL, userID,
+			)
+		} else {
+			batch.Queue(
+				"INSERT INTO urls (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO NOTHING",
+				item.ShortID, item.OriginalURL,
+			)
+		}
 	}
 
 	br := r.db.SendBatch(ctx, batch)
@@ -98,6 +162,32 @@ func (r *PostgresRepository) BatchSave(ctx context.Context, items []BatchEntry) 
 	for range items {
 		if _, err := br.Exec(); err != nil {
 			return fmt.Errorf("failed to send batch: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *PostgresRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
+	if len(shortIDs) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+
+	for _, shortID := range shortIDs {
+		batch.Queue(
+			"UPDATE urls SET is_deleted = true WHERE short_id = $1 AND user_id = $2",
+			shortID, userID,
+		)
+	}
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for range shortIDs {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("failed to delete url: %w", err)
 		}
 	}
 

@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 type Config struct {
@@ -11,6 +13,7 @@ type Config struct {
 	BaseURL         string // "http://localhost:8080"
 	FileStoragePath string
 	DatabaseDSN     string
+	CookieSecret    string
 }
 
 const (
@@ -18,6 +21,7 @@ const (
 	envBaseURL         = "BASE_URL"
 	envFileStoragePath = "FILE_STORAGE_PATH"
 	envDatabaseDSN     = "DATABASE_DSN"
+	envCookieSecret    = "COOKIE_SECRET"
 
 	defaultServerAddr      = ":8080"
 	defaultBaseURL         = "http://localhost:8080"
@@ -30,6 +34,7 @@ func New() *Config {
 		BaseURL:         defaultBaseURL,
 		FileStoragePath: defaultFileStoragePath,
 		DatabaseDSN:     "",
+		CookieSecret:    "",
 	}
 
 	// parsing flags
@@ -37,6 +42,7 @@ func New() *Config {
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "short URL base address (http://localhost:8080)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "URL (JSON) storage file path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "PostgreSQL (DATABASE_DSN)")
+	flag.StringVar(&cfg.CookieSecret, "s", cfg.CookieSecret, "Secret key for cookie signing")
 	flag.Parse()
 
 	// parsing env
@@ -52,6 +58,9 @@ func New() *Config {
 	if v, ok := os.LookupEnv(envDatabaseDSN); ok {
 		cfg.DatabaseDSN = v
 	}
+	if v, ok := os.LookupEnv(envCookieSecret); ok {
+		cfg.CookieSecret = v
+	}
 
 	if cfg.ServerAddr == "" {
 		fmt.Fprintln(os.Stderr, "Server address can not be empty")
@@ -61,6 +70,10 @@ func New() *Config {
 	// if BaseURL (flag -b or env BASE_URL) empty
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://" + cfg.ServerAddr
+	}
+
+	if cfg.CookieSecret == "" {
+		cfg.CookieSecret = uuid.NewString()
 	}
 
 	return cfg

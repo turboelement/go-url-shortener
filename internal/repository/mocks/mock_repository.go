@@ -42,32 +42,61 @@ func (m *MockURLRepositoryInterface) EXPECT() *MockURLRepositoryInterfaceMockRec
 }
 
 // BatchSave mocks base method.
-func (m *MockURLRepositoryInterface) BatchSave(ctx context.Context, items []repository.BatchEntry) error {
+func (m *MockURLRepositoryInterface) BatchSave(ctx context.Context, userID string, items []repository.BatchEntry) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BatchSave", ctx, items)
+	ret := m.ctrl.Call(m, "BatchSave", ctx, userID, items)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // BatchSave indicates an expected call of BatchSave.
-func (mr *MockURLRepositoryInterfaceMockRecorder) BatchSave(ctx, items any) *gomock.Call {
+func (mr *MockURLRepositoryInterfaceMockRecorder) BatchSave(ctx, userID, items any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSave", reflect.TypeOf((*MockURLRepositoryInterface)(nil).BatchSave), ctx, items)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchSave", reflect.TypeOf((*MockURLRepositoryInterface)(nil).BatchSave), ctx, userID, items)
+}
+
+// DeleteUserURLs mocks base method.
+func (m *MockURLRepositoryInterface) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUserURLs", ctx, userID, shortIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteUserURLs indicates an expected call of DeleteUserURLs.
+func (mr *MockURLRepositoryInterfaceMockRecorder) DeleteUserURLs(ctx, userID, shortIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserURLs", reflect.TypeOf((*MockURLRepositoryInterface)(nil).DeleteUserURLs), ctx, userID, shortIDs)
 }
 
 // Get mocks base method.
-func (m *MockURLRepositoryInterface) Get(shortID string) (string, bool) {
+func (m *MockURLRepositoryInterface) Get(ctx context.Context, shortID string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", shortID)
+	ret := m.ctrl.Call(m, "Get", ctx, shortID)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(bool)
+	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockURLRepositoryInterfaceMockRecorder) Get(shortID any) *gomock.Call {
+func (mr *MockURLRepositoryInterfaceMockRecorder) Get(ctx, shortID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockURLRepositoryInterface)(nil).Get), shortID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockURLRepositoryInterface)(nil).Get), ctx, shortID)
+}
+
+// GetUserURLs mocks base method.
+func (m *MockURLRepositoryInterface) GetUserURLs(ctx context.Context, userID string) ([]repository.UserURL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserURLs", ctx, userID)
+	ret0, _ := ret[0].([]repository.UserURL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserURLs indicates an expected call of GetUserURLs.
+func (mr *MockURLRepositoryInterfaceMockRecorder) GetUserURLs(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserURLs", reflect.TypeOf((*MockURLRepositoryInterface)(nil).GetUserURLs), ctx, userID)
 }
 
 // Ping mocks base method.
@@ -85,16 +114,31 @@ func (mr *MockURLRepositoryInterfaceMockRecorder) Ping(ctx any) *gomock.Call {
 }
 
 // Save mocks base method.
-func (m *MockURLRepositoryInterface) Save(shortID, originalURL string) (string, error) {
+func (m *MockURLRepositoryInterface) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Save", shortID, originalURL)
+	ret := m.ctrl.Call(m, "Save", ctx, shortID, originalURL)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Save indicates an expected call of Save.
-func (mr *MockURLRepositoryInterfaceMockRecorder) Save(shortID, originalURL any) *gomock.Call {
+func (mr *MockURLRepositoryInterfaceMockRecorder) Save(ctx, shortID, originalURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockURLRepositoryInterface)(nil).Save), shortID, originalURL)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockURLRepositoryInterface)(nil).Save), ctx, shortID, originalURL)
+}
+
+// SaveWithUser mocks base method.
+func (m *MockURLRepositoryInterface) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveWithUser", ctx, shortID, originalURL, userID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SaveWithUser indicates an expected call of SaveWithUser.
+func (mr *MockURLRepositoryInterfaceMockRecorder) SaveWithUser(ctx, shortID, originalURL, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveWithUser", reflect.TypeOf((*MockURLRepositoryInterface)(nil).SaveWithUser), ctx, shortID, originalURL, userID)
 }

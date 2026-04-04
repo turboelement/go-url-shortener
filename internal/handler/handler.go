@@ -9,11 +9,15 @@ import (
 	"strings"
 
 	"go-url-shortener/internal/logger"
+	"go-url-shortener/internal/middleware"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/service"
 
 	"go.uber.org/zap"
 )
+
+// matches the original_url VARCHAR(4096) field limit in the db
+const MaxOriginalURLLength = 4096
 
 type JSONRequest struct {
 	URL string `json:"url"`
@@ -27,13 +31,20 @@ type BatchRequest []service.BatchItem
 
 type BatchResponse []service.BatchResult
 
+type UserURLsResponse []UserURLItem
+
+type UserURLItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Error("Cannot read request body", zap.Error(err))
+			log.Debug("Cannot read request body", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -41,12 +52,28 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 
 		originalURL := strings.TrimSpace(string(body))
 		if originalURL == "" {
-			log.Error("URL cannot be empty", zap.Error(err))
+			log.Debug("URL cannot be empty", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
-		shortID, err := svc.Shorten(originalURL)
+		if len(originalURL) > MaxOriginalURLLength {
+			log.Debug("URL exceeds maximum allowed length",
+				zap.Int("length", len(originalURL)),
+				zap.Int("max", MaxOriginalURLLength),
+			)
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		userID, err := middleware.GetUserIDFromContext(r)
+		if err != nil {
+			log.Debug("Failed to get User ID from context", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		shortID, err := svc.ShortenWithUser(r.Context(), originalURL, userID)
 		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
 
 		if err != nil && !isURLAlreadyExists {
@@ -80,18 +107,34 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		var req JSONRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			log.Error("Invalid JSON", zap.Error(err))
+			log.Debug("Invalid JSON", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
 		if req.URL == "" {
-			log.Error("URL is required")
+			log.Debug("URL is required")
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
-		shortID, err := svc.Shorten(req.URL)
+		if len(req.URL) > MaxOriginalURLLength {
+			log.Debug("URL exceeds maximum allowed length",
+				zap.Int("length", len(req.URL)),
+				zap.Int("max", MaxOriginalURLLength),
+			)
+			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		userID, err := middleware.GetUserIDFromContext(r)
+		if err != nil {
+			log.Debug("Failed to get User ID from context", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		shortID, err := svc.ShortenWithUser(r.Context(), req.URL, userID)
 		isURLAlreadyExists := errors.Is(err, repository.ErrURLAlreadyExists)
 
 		if err != nil && !isURLAlreadyExists {
@@ -130,14 +173,21 @@ func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.Han
 		var req BatchRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			log.Error("Invalid JSON", zap.Error(err))
+			log.Debug("Invalid JSON", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
-		results, err := svc.BatchShorten(r.Context(), req)
+		userID, err := middleware.GetUserIDFromContext(r)
 		if err != nil {
-			log.Error("Failed to shorten batch", zap.Error(err))
+			log.Debug("Failed to get User ID from context", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		results, err := svc.BatchShortenWithUser(r.Context(), userID, req)
+		if err != nil {
+			log.Debug("Failed to shorten batch", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -164,20 +214,110 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 
 		id := r.PathValue("id")
 		if id == "" {
-			log.Error("Short ID is required")
+			log.Debug("Short ID is required")
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
-		originalURL, found := svc.GetOriginalURL(id)
-		if !found {
-			log.Error("Short URL not found")
+		originalURL, err := svc.GetOriginalURL(r.Context(), id)
+		if err != nil {
+			if errors.Is(err, repository.ErrURLMarkedAsDeleted) {
+				log.Debug("Short URL marked as deleted")
+				http.Error(w, http.StatusText(http.StatusGone), http.StatusGone)
+				return
+			}
+			if errors.Is(err, repository.ErrURLNotFound) {
+				log.Debug("Short URL not found")
+				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+				return
+			}
+			log.Error("Error getting URL", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if originalURL == "" {
+			log.Debug("Short URL not found")
 			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 			return
 		}
 
 		w.Header().Set("Location", originalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
+}
+
+func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, err := middleware.GetUserIDFromContext(r)
+		if err != nil {
+			log.Debug("Failed to get User ID from context", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		userURLs, err := svc.GetUserURLs(r.Context(), userID)
+		if err != nil {
+			log.Error("Failed to get user URLs", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if len(userURLs) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		response := make(UserURLsResponse, 0, len(userURLs))
+		for _, u := range userURLs {
+			shortURL, err := url.JoinPath(baseURL, u.ShortURL)
+			if err != nil {
+				log.Error("Failed to build short URL", zap.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
+			response = append(response, UserURLItem{
+				ShortURL:    shortURL,
+				OriginalURL: u.OriginalURL,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		userID, err := middleware.GetUserIDFromContext(r)
+		if err != nil {
+			log.Debug("Failed to get User ID from context", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		var shortIDs []string
+		if err := json.NewDecoder(r.Body).Decode(&shortIDs); err != nil {
+			log.Debug("Invalid JSON", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		if len(shortIDs) == 0 {
+			log.Debug("Empty short IDs list")
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		svc.DeleteUserURLsAsync(userID, shortIDs)
+
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

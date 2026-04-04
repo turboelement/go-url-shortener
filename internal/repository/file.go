@@ -21,6 +21,8 @@ type FileEntry struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id,omitempty"`
+	DeletedFlag bool   `json:"deleted_flag,omitempty"`
 }
 
 func NewFileURLRepository(filePath string) *FileURLRepository {
@@ -40,8 +42,8 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 	return repo
 }
 
-func (r *FileURLRepository) Save(shortID, originalURL string) (string, error) {
-	storedID, err := r.URLRepository.Save(shortID, originalURL)
+func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
+	storedID, err := r.URLRepository.Save(ctx, shortID, originalURL)
 	if err != nil {
 		if errors.Is(err, ErrURLAlreadyExists) {
 			return storedID, err
@@ -72,11 +74,44 @@ func (r *FileURLRepository) Save(shortID, originalURL string) (string, error) {
 	return storedID, nil
 }
 
+func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
+	storedID, err := r.URLRepository.SaveWithUser(ctx, shortID, originalURL, userID)
+	if err != nil {
+		if errors.Is(err, ErrURLAlreadyExists) {
+			return storedID, err
+		}
+		return "", err
+	}
+
+	if r.file == nil {
+		return storedID, nil
+	}
+
+	entry := FileEntry{
+		UUID:        uuid.NewString(),
+		ShortURL:    shortID,
+		OriginalURL: originalURL,
+		UserID:      userID,
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return "", fmt.Errorf("error marshaling to json: %w", err)
+	}
+
+	_, err = r.file.Write(append(data, '\n'))
+	if err != nil {
+		return "", fmt.Errorf("error writing to file: %w", err)
+	}
+
+	return storedID, nil
+}
+
 func (r *FileURLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) error {
+func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -85,7 +120,11 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) e
 			continue
 		}
 
-		r.store[item.ShortID] = item.OriginalURL
+		r.store[item.ShortID] = &URLEntry{
+			ShortID:     item.ShortID,
+			OriginalURL: item.OriginalURL,
+			UserID:      userID,
+		}
 		r.rev[item.OriginalURL] = item.ShortID
 
 		if r.file != nil {
@@ -93,6 +132,7 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, items []BatchEntry) e
 				UUID:        uuid.NewString(),
 				ShortURL:    item.ShortID,
 				OriginalURL: item.OriginalURL,
+				UserID:      userID,
 			}
 
 			data, err := json.Marshal(entry)
@@ -137,7 +177,12 @@ func (r *FileURLRepository) loadFromFile() {
 		}
 
 		if entry.ShortURL != "" && entry.OriginalURL != "" {
-			r.store[entry.ShortURL] = entry.OriginalURL
+			r.store[entry.ShortURL] = &URLEntry{
+				ShortID:     entry.ShortURL,
+				OriginalURL: entry.OriginalURL,
+				UserID:      entry.UserID,
+				DeletedFlag: entry.DeletedFlag,
+			}
 			r.rev[entry.OriginalURL] = entry.ShortURL
 		}
 	}
