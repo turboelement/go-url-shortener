@@ -19,7 +19,7 @@ import (
 )
 
 // matches the original_url VARCHAR(4096) field limit in the db
-const MaxOriginalURLLength = 4096
+const maxOriginalURLLength = 4096
 
 type JSONRequest struct {
 	URL string `json:"url"`
@@ -44,6 +44,7 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxOriginalURLLength+1024)
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Debug("Cannot read request body", zap.Error(err))
@@ -59,10 +60,10 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 			return
 		}
 
-		if len(originalURL) > MaxOriginalURLLength {
+		if len(originalURL) > maxOriginalURLLength {
 			log.Debug("URL exceeds maximum allowed length",
 				zap.Int("length", len(originalURL)),
-				zap.Int("max", MaxOriginalURLLength),
+				zap.Int("max", maxOriginalURLLength),
 			)
 			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 			return
@@ -132,10 +133,10 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 			return
 		}
 
-		if len(req.URL) > MaxOriginalURLLength {
+		if len(req.URL) > maxOriginalURLLength {
 			log.Debug("URL exceeds maximum allowed length",
 				zap.Int("length", len(req.URL)),
-				zap.Int("max", MaxOriginalURLLength),
+				zap.Int("max", maxOriginalURLLength),
 			)
 			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 			return

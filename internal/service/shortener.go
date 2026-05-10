@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 const shortIDLength = 8
 
@@ -55,9 +55,9 @@ func NewShortenerService(repo repository.URLRepositoryInterface) *ShortenerServi
 }
 
 func (s *ShortenerService) GenerateShortID() string {
-	b := make([]rune, shortIDLength)
+	b := make([]byte, shortIDLength)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
 }
@@ -261,8 +261,13 @@ func (s *ShortenerService) flush(tasks []deleteTask) {
 	}
 	ctx := context.Background()
 
+	userBatch := make(map[string][]string, len(tasks))
 	for _, t := range tasks {
-		if err := s.repo.DeleteUserURLs(ctx, t.UserID, t.ShortIDs); err != nil {
+		userBatch[t.UserID] = append(userBatch[t.UserID], t.ShortIDs...)
+	}
+
+	for userID, shortIDs := range userBatch {
+		if err := s.repo.DeleteUserURLs(ctx, userID, shortIDs); err != nil {
 			logger.FromContext(ctx).Error("delete worker error", zap.Error(err))
 		}
 	}

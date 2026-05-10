@@ -15,6 +15,7 @@ type FileURLRepository struct {
 	*URLRepository // embedding in-memory repo
 	filePath       string
 	file           *os.File
+	bufWriter      *bufio.Writer
 }
 
 type FileEntry struct {
@@ -36,6 +37,7 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 		fmt.Printf("Error opening file: %s: %v\n", filePath, err)
 	} else {
 		repo.file = f
+		repo.bufWriter = bufio.NewWriterSize(f, 32*1024)
 	}
 
 	repo.loadFromFile()
@@ -66,9 +68,8 @@ func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL strin
 		return "", fmt.Errorf("error marshaling to json: %w", err)
 	}
 
-	_, err = r.file.Write(append(data, '\n'))
-	if err != nil {
-		return "", fmt.Errorf("error writing to file: %w", err)
+	if err := r.writeLine(data); err != nil {
+		return "", err
 	}
 
 	return storedID, nil
@@ -99,9 +100,8 @@ func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalU
 		return "", fmt.Errorf("error marshaling to json: %w", err)
 	}
 
-	_, err = r.file.Write(append(data, '\n'))
-	if err != nil {
-		return "", fmt.Errorf("error writing to file: %w", err)
+	if err := r.writeLine(data); err != nil {
+		return "", err
 	}
 
 	return storedID, nil
@@ -120,12 +120,16 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items 
 			continue
 		}
 
-		r.store[item.ShortID] = &URLEntry{
+		r.store[item.ShortID] = URLEntry{
 			ShortID:     item.ShortID,
 			OriginalURL: item.OriginalURL,
 			UserID:      userID,
 		}
 		r.rev[item.OriginalURL] = item.ShortID
+
+		if userID != "" {
+			r.userIndex[userID] = append(r.userIndex[userID], item.ShortID)
+		}
 
 		if r.file != nil {
 			entry := FileEntry{
@@ -140,9 +144,8 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items 
 				return fmt.Errorf("error marshaling to json: %w", err)
 			}
 
-			_, err = r.file.Write(append(data, '\n'))
-			if err != nil {
-				return fmt.Errorf("error writing to file: %w", err)
+			if err := r.writeLine(data); err != nil {
+				return err
 			}
 		}
 	}
@@ -177,13 +180,30 @@ func (r *FileURLRepository) loadFromFile() {
 		}
 
 		if entry.ShortURL != "" && entry.OriginalURL != "" {
-			r.store[entry.ShortURL] = &URLEntry{
+			r.store[entry.ShortURL] = URLEntry{
 				ShortID:     entry.ShortURL,
 				OriginalURL: entry.OriginalURL,
 				UserID:      entry.UserID,
 				DeletedFlag: entry.DeletedFlag,
 			}
 			r.rev[entry.OriginalURL] = entry.ShortURL
+
+			if entry.UserID != "" {
+				r.userIndex[entry.UserID] = append(r.userIndex[entry.UserID], entry.ShortURL)
+			}
 		}
 	}
+}
+
+func (r *FileURLRepository) writeLine(data []byte) error {
+	if r.bufWriter == nil {
+		return nil
+	}
+	if _, err := r.bufWriter.Write(data); err != nil {
+		return fmt.Errorf("error writing to buffer: %w", err)
+	}
+	if _, err := r.bufWriter.Write([]byte{'\n'}); err != nil {
+		return fmt.Errorf("error writing newline: %w", err)
+	}
+	return r.bufWriter.Flush()
 }

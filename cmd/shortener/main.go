@@ -11,6 +11,7 @@ import (
 
 	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/config"
+	"go-url-shortener/internal/profiler"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
 	"go-url-shortener/internal/service"
@@ -31,6 +32,13 @@ func main() {
 		zap.String("ServerAddr", cfg.ServerAddr),
 		zap.String("BaseURL", cfg.BaseURL),
 	)
+
+	if cfg.EnablePprof {
+		p := profiler.New()
+		p.Start()
+		defer p.Close()
+		logger.Info("pprof server started", zap.String("address", p.Addr()))
+	}
 
 	var repo repository.URLRepositoryInterface
 

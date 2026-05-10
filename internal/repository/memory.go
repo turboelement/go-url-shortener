@@ -13,15 +13,17 @@ type URLEntry struct {
 }
 
 type URLRepository struct {
-	store map[string]*URLEntry // shortID | URLEntry
-	rev   map[string]string    // reverse originalURL | shortID
-	mu    sync.RWMutex
+	store     map[string]URLEntry // shortID | URLEntry (value, not pointer — reduces GC pressure)
+	rev       map[string]string   // reverse originalURL | shortID
+	userIndex map[string][]string // userID | []shortID
+	mu        sync.RWMutex
 }
 
 func NewURLRepository() *URLRepository {
 	return &URLRepository{
-		store: make(map[string]*URLEntry),
-		rev:   make(map[string]string),
+		store:     make(map[string]URLEntry),
+		rev:       make(map[string]string),
+		userIndex: make(map[string][]string),
 		// mu no need to init — zero value sync.RWMutex is ready to use
 	}
 }
@@ -34,7 +36,7 @@ func (r *URLRepository) Save(ctx context.Context, shortID, originalURL string) (
 		return storedID, ErrURLAlreadyExists
 	}
 
-	r.store[shortID] = &URLEntry{
+	r.store[shortID] = URLEntry{
 		ShortID:     shortID,
 		OriginalURL: originalURL,
 	}
@@ -69,12 +71,14 @@ func (r *URLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, 
 		return storedID, ErrURLAlreadyExists
 	}
 
-	r.store[shortID] = &URLEntry{
+	r.store[shortID] = URLEntry{
 		ShortID:     shortID,
 		OriginalURL: originalURL,
 		UserID:      userID,
 	}
 	r.rev[originalURL] = shortID
+
+	r.userIndex[userID] = append(r.userIndex[userID], shortID)
 
 	return shortID, nil
 }
@@ -83,9 +87,15 @@ func (r *URLRepository) GetUserURLs(ctx context.Context, userID string) ([]UserU
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]UserURL, 0)
-	for _, entry := range r.store {
-		if entry.UserID == userID && !entry.DeletedFlag {
+	shortIDs, exists := r.userIndex[userID]
+	if !exists || len(shortIDs) == 0 {
+		return []UserURL{}, nil
+	}
+
+	result := make([]UserURL, 0, len(shortIDs))
+	for _, shortID := range shortIDs {
+		entry, ok := r.store[shortID]
+		if ok && !entry.DeletedFlag {
 			result = append(result, UserURL{
 				ShortURL:    entry.ShortID,
 				OriginalURL: entry.OriginalURL,
@@ -102,12 +112,16 @@ func (r *URLRepository) BatchSave(ctx context.Context, userID string, items []Ba
 
 	for _, item := range items {
 		if _, exists := r.rev[item.OriginalURL]; !exists {
-			r.store[item.ShortID] = &URLEntry{
+			r.store[item.ShortID] = URLEntry{
 				ShortID:     item.ShortID,
 				OriginalURL: item.OriginalURL,
 				UserID:      userID,
 			}
 			r.rev[item.OriginalURL] = item.ShortID
+
+			if userID != "" {
+				r.userIndex[userID] = append(r.userIndex[userID], item.ShortID)
+			}
 		}
 	}
 
@@ -121,6 +135,7 @@ func (r *URLRepository) DeleteUserURLs(ctx context.Context, userID string, short
 	for _, shortID := range shortIDs {
 		if entry, ok := r.store[shortID]; ok && entry.UserID == userID {
 			entry.DeletedFlag = true
+			r.store[shortID] = entry
 		}
 	}
 

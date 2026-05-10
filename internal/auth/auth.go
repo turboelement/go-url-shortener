@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	CookieName   = "user_id"
-	CookieMaxAge = time.Hour * 24 * 30 // 30 days
+	cookieName   = "user_id"
+	cookieMaxAge = time.Hour * 24 * 30 // 30 days
 )
 
 func GenerateUserID() (string, error) {
@@ -23,15 +23,15 @@ func GenerateUserID() (string, error) {
 	return id.String(), nil
 }
 
-type CustomClaims struct {
+type customClaims struct {
 	jwt.RegisteredClaims
 }
 
 func SignUserID(userID, secret string) (string, error) {
-	claims := CustomClaims{
+	claims := customClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(CookieMaxAge)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cookieMaxAge)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -46,7 +46,7 @@ func SignUserID(userID, secret string) (string, error) {
 }
 
 func VerifyUserID(tokenString, secret string) (string, bool) {
-	claims := &CustomClaims{}
+	claims := &customClaims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -69,9 +69,9 @@ func SetAuthCookie(w http.ResponseWriter, userID, secret string) error {
 	}
 
 	cookie := &http.Cookie{
-		Name:     CookieName,
+		Name:     cookieName,
 		Value:    signedValue,
-		MaxAge:   int(CookieMaxAge.Seconds()),
+		MaxAge:   int(cookieMaxAge.Seconds()),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
@@ -83,7 +83,7 @@ func SetAuthCookie(w http.ResponseWriter, userID, secret string) error {
 }
 
 func GetUserIDFromCookie(r *http.Request, secret string) (string, bool, error) {
-	cookie, err := r.Cookie(CookieName)
+	cookie, err := r.Cookie(cookieName)
 	if err != nil {
 		if err == http.ErrNoCookie {
 			return "", false, nil

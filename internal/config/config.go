@@ -3,7 +3,9 @@ package config
 import (
 	"flag"
 	"fmt"
+	"go-url-shortener/internal/profiler"
 	"os"
+	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -16,6 +18,7 @@ type Config struct {
 	CookieSecret    string
 	AuditFilePath   string
 	AuditURL        string
+	EnablePprof     bool
 }
 
 const (
@@ -26,6 +29,7 @@ const (
 	envCookieSecret    = "COOKIE_SECRET"
 	envAuditFile       = "AUDIT_FILE"
 	envAuditURL        = "AUDIT_URL"
+	envEnablePprof     = "ENABLE_PPROF"
 
 	defaultServerAddr      = ":8080"
 	defaultBaseURL         = "http://localhost:8080"
@@ -41,6 +45,7 @@ func New() *Config {
 		CookieSecret:    "",
 		AuditFilePath:   "",
 		AuditURL:        "",
+		EnablePprof:     false,
 	}
 
 	// parsing flags
@@ -51,6 +56,7 @@ func New() *Config {
 	flag.StringVar(&cfg.CookieSecret, "s", cfg.CookieSecret, "Secret key for cookie signing")
 	flag.StringVar(&cfg.AuditFilePath, "audit-file", cfg.AuditFilePath, "Audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit URL address")
+	flag.BoolVar(&cfg.EnablePprof, "enable-pprof", false, "Enable debug/pprof on URL address "+profiler.DefaultAddr)
 	flag.Parse()
 
 	// parsing env
@@ -74,6 +80,14 @@ func New() *Config {
 	}
 	if v, ok := os.LookupEnv(envAuditURL); ok {
 		cfg.AuditURL = v
+	}
+	if val, ok := os.LookupEnv(envEnablePprof); ok {
+		enabled, err := strconv.ParseBool(val)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid ENABLE_PPROF value")
+			os.Exit(1)
+		}
+		cfg.EnablePprof = enabled
 	}
 
 	if cfg.ServerAddr == "" {
