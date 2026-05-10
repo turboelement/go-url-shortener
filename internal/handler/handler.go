@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/logger"
 	"go-url-shortener/internal/middleware"
 	"go-url-shortener/internal/repository"
@@ -97,6 +99,18 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(status)
 		w.Write([]byte(shortURL))
+
+		if status == http.StatusCreated {
+			as := audit.FromContext(r.Context())
+			if as != nil {
+				as.NotifyAll(audit.AuditEvent{
+					Timestamp: time.Now().Unix(),
+					Action:    audit.ActionShorten,
+					UserID:    userID,
+					URL:       originalURL,
+				})
+			}
+		}
 	}
 }
 
@@ -163,6 +177,18 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		w.WriteHeader(status)
 
 		json.NewEncoder(w).Encode(resp)
+
+		if status == http.StatusCreated {
+			as := audit.FromContext(r.Context())
+			if as != nil {
+				as.NotifyAll(audit.AuditEvent{
+					Timestamp: time.Now().Unix(),
+					Action:    audit.ActionShorten,
+					UserID:    userID,
+					URL:       req.URL,
+				})
+			}
+		}
 	}
 }
 
@@ -244,6 +270,21 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 
 		w.Header().Set("Location", originalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+
+		as := audit.FromContext(r.Context())
+		if as != nil {
+			userID, err := middleware.GetUserIDFromContext(r)
+			if err != nil {
+				userID = ""
+			}
+
+			as.NotifyAll(audit.AuditEvent{
+				Timestamp: time.Now().Unix(),
+				Action:    audit.ActionFollow,
+				UserID:    userID,
+				URL:       originalURL,
+			})
+		}
 	}
 }
 

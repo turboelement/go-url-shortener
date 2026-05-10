@@ -14,6 +14,8 @@ type Config struct {
 	FileStoragePath string
 	DatabaseDSN     string
 	CookieSecret    string
+	AuditFilePath   string
+	AuditURL        string
 }
 
 const (
@@ -22,10 +24,12 @@ const (
 	envFileStoragePath = "FILE_STORAGE_PATH"
 	envDatabaseDSN     = "DATABASE_DSN"
 	envCookieSecret    = "COOKIE_SECRET"
+	envAuditFile       = "AUDIT_FILE"
+	envAuditURL        = "AUDIT_URL"
 
 	defaultServerAddr      = ":8080"
 	defaultBaseURL         = "http://localhost:8080"
-	defaultFileStoragePath = "./urls.json"
+	defaultFileStoragePath = "./urls.txt"
 )
 
 func New() *Config {
@@ -35,6 +39,8 @@ func New() *Config {
 		FileStoragePath: defaultFileStoragePath,
 		DatabaseDSN:     "",
 		CookieSecret:    "",
+		AuditFilePath:   "",
+		AuditURL:        "",
 	}
 
 	// parsing flags
@@ -43,6 +49,8 @@ func New() *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "URL (JSON) storage file path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "PostgreSQL (DATABASE_DSN)")
 	flag.StringVar(&cfg.CookieSecret, "s", cfg.CookieSecret, "Secret key for cookie signing")
+	flag.StringVar(&cfg.AuditFilePath, "audit-file", cfg.AuditFilePath, "Audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit URL address")
 	flag.Parse()
 
 	// parsing env
@@ -60,6 +68,12 @@ func New() *Config {
 	}
 	if v, ok := os.LookupEnv(envCookieSecret); ok {
 		cfg.CookieSecret = v
+	}
+	if v, ok := os.LookupEnv(envAuditFile); ok {
+		cfg.AuditFilePath = v
+	}
+	if v, ok := os.LookupEnv(envAuditURL); ok {
+		cfg.AuditURL = v
 	}
 
 	if cfg.ServerAddr == "" {

@@ -7,6 +7,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware" //Compress
 	"go.uber.org/zap"
 
+	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/handler"
 	"go-url-shortener/internal/logger"
 	"go-url-shortener/internal/middleware"
@@ -20,6 +21,7 @@ type RouterDeps struct {
 	Logger       *zap.Logger
 	Repo         repository.URLRepositoryInterface
 	Svc          *service.ShortenerService
+	AuditSubject *audit.Subject
 }
 
 func NewRouter(deps RouterDeps) http.Handler {
@@ -30,6 +32,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Use(chimiddleware.Compress(5, "application/json", "text/html"))
 
 	r.Use(middleware.AuthMiddleware(deps.CookieSecret, deps.Logger))
+
+	r.Use(audit.Middleware(deps.AuditSubject))
 
 	r.Post("/", handler.PostHandler(deps.Svc, deps.BaseURL))
 	r.Post("/api/shorten", handler.PostJSONHandler(deps.Svc, deps.BaseURL))

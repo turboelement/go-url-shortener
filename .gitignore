@@ -23,5 +23,6 @@ vendor/
 .vscode
 *.code-workspace
 
-urls.json
+urls.txt
 cookies.txt
+audit.txt

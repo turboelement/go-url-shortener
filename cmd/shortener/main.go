@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/config"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
@@ -54,12 +55,24 @@ func main() {
 	svc := service.NewShortenerService(repo)
 	defer svc.Close()
 
+	auditSubject := audit.NewSubject()
+	if cfg.AuditFilePath != "" {
+		auditSubject.Register(audit.NewFileObserver(cfg.AuditFilePath))
+		logger.Info("Using file audit", zap.String("file_path", cfg.AuditFilePath))
+	}
+	if cfg.AuditURL != "" {
+		auditSubject.Register(audit.NewHTTPObserver(cfg.AuditURL))
+		logger.Info("Using HTTP audit", zap.String("url", cfg.AuditURL))
+	}
+	defer auditSubject.Close()
+
 	router := server.NewRouter(server.RouterDeps{
 		BaseURL:      cfg.BaseURL,
 		CookieSecret: cfg.CookieSecret,
 		Logger:       logger,
 		Repo:         repo,
 		Svc:          svc,
+		AuditSubject: auditSubject,
 	})
 
 	srv := &http.Server{
