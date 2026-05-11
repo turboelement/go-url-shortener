@@ -1,3 +1,4 @@
+// Package profiler runs a separate HTTP server for pprof debugging endpoints.
 package profiler
 
 import (
@@ -6,13 +7,16 @@ import (
 	"net/http/pprof"
 )
 
+// DefaultAddr is the default pprof server address.
 const DefaultAddr = "localhost:8081"
 
+// Profiler serves pprof debugging endpoints on a separate HTTP server.
 type Profiler struct {
 	server *http.Server
 	addr   string
 }
 
+// New creates a Profiler with pprof handlers registered on the default address.
 func New() *Profiler {
 	addr := DefaultAddr
 
@@ -35,6 +39,7 @@ func New() *Profiler {
 	}
 }
 
+// Start launches the pprof HTTP server in a background goroutine.
 func (p *Profiler) Start() {
 	go func() {
 		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -43,10 +48,12 @@ func (p *Profiler) Start() {
 	}()
 }
 
+// Addr returns the address the pprof server is listening on.
 func (p *Profiler) Addr() string {
 	return p.addr
 }
 
+// Close shuts down the pprof HTTP server.
 func (p *Profiler) Close() error {
 	return p.server.Close()
 }

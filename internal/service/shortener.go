@@ -1,3 +1,4 @@
+// Package service contains business logic for URL shortening.
 package service
 
 import (
@@ -22,6 +23,7 @@ type deleteTask struct {
 	ShortIDs []string
 }
 
+// ShortenerService provides URL shortening operations.
 type ShortenerService struct {
 	repo     repository.URLRepositoryInterface
 	deleteCh chan deleteTask
@@ -31,16 +33,19 @@ type ShortenerService struct {
 	mu       sync.RWMutex
 }
 
+// BatchItem is a single URL item in a batch shorten request.
 type BatchItem struct {
 	CorrelationID string `json:"correlation_id"`
 	OriginalURL   string `json:"original_url"`
 }
 
+// BatchResult contains the short URL and its correlation ID from a batch request.
 type BatchResult struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
 }
 
+// NewShortenerService creates a service with the given repository and starts the async delete worker.
 func NewShortenerService(repo repository.URLRepositoryInterface) *ShortenerService {
 	s := &ShortenerService{
 		repo:     repo,
@@ -54,6 +59,7 @@ func NewShortenerService(repo repository.URLRepositoryInterface) *ShortenerServi
 	return s
 }
 
+// GenerateShortID returns a random 8-character alphanumeric ID.
 func (s *ShortenerService) GenerateShortID() string {
 	b := make([]byte, shortIDLength)
 	for i := range b {
@@ -62,6 +68,7 @@ func (s *ShortenerService) GenerateShortID() string {
 	return string(b)
 }
 
+// Shorten saves a URL and returns its short ID.
 func (s *ShortenerService) Shorten(ctx context.Context, originalURL string) (string, error) {
 	shortID := s.GenerateShortID()
 
@@ -84,6 +91,7 @@ func (s *ShortenerService) Shorten(ctx context.Context, originalURL string) (str
 	return storedShortID, nil
 }
 
+// ShortenWithUser saves a URL linked to a user and returns its short ID.
 func (s *ShortenerService) ShortenWithUser(ctx context.Context, originalURL, userID string) (string, error) {
 	shortID := s.GenerateShortID()
 
@@ -106,6 +114,7 @@ func (s *ShortenerService) ShortenWithUser(ctx context.Context, originalURL, use
 	return storedShortID, nil
 }
 
+// BatchShorten shortens multiple URLs in one call (no user association).
 func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) ([]BatchResult, error) {
 	if len(items) == 0 {
 		return nil, errors.New("empty batch")
@@ -146,6 +155,7 @@ func (s *ShortenerService) BatchShorten(ctx context.Context, items []BatchItem) 
 	return results, nil
 }
 
+// BatchShortenWithUser shortens multiple URLs linked to a user.
 func (s *ShortenerService) BatchShortenWithUser(ctx context.Context, userID string, items []BatchItem) ([]BatchResult, error) {
 	if len(items) == 0 {
 		return nil, errors.New("empty batch")
@@ -186,18 +196,22 @@ func (s *ShortenerService) BatchShortenWithUser(ctx context.Context, userID stri
 	return results, nil
 }
 
+// GetOriginalURL returns the original URL for a short ID.
 func (s *ShortenerService) GetOriginalURL(ctx context.Context, shortID string) (string, error) {
 	return s.repo.Get(ctx, shortID)
 }
 
+// GetUserURLs returns all URLs created by the given user.
 func (s *ShortenerService) GetUserURLs(ctx context.Context, userID string) ([]repository.UserURL, error) {
 	return s.repo.GetUserURLs(ctx, userID)
 }
 
+// DeleteUserURLs marks the specified URLs as deleted for the given user (synchronous).
 func (s *ShortenerService) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
 	return s.repo.DeleteUserURLs(ctx, userID, shortIDs)
 }
 
+// DeleteUserURLsAsync sends URLs to the async delete worker for batch deletion.
 func (s *ShortenerService) DeleteUserURLsAsync(userID string, shortIDs []string) {
 	if len(shortIDs) == 0 {
 		return
@@ -273,6 +287,7 @@ func (s *ShortenerService) flush(tasks []deleteTask) {
 	}
 }
 
+// Close gracefully stops the async delete worker and releases resources.
 func (s *ShortenerService) Close() error {
 	s.mu.Lock()
 	if s.closed {

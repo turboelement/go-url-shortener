@@ -1,3 +1,4 @@
+// Package config loads and stores application configuration from flags and environment variables.
 package config
 
 import (
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Config stores application configuration from flags and env vars.
 type Config struct {
 	ServerAddr      string // ":8080" or "localhost:8888"
 	BaseURL         string // "http://localhost:8080"
@@ -36,6 +38,7 @@ const (
 	defaultFileStoragePath = "./urls.txt"
 )
 
+// New reads flags and env vars and returns a populated Config.
 func New() *Config {
 	cfg := &Config{
 		ServerAddr:      defaultServerAddr,

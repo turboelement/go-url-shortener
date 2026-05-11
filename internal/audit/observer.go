@@ -2,24 +2,29 @@ package audit
 
 import "sync"
 
+// Observer is notified whenever an audit event occurs.
 type Observer interface {
 	Notify(event AuditEvent) error
 }
 
+// Subject manages a list of observers and fans out audit events to them.
 type Subject struct {
 	observers []Observer
 	initOnce  sync.Once
 	eventChs  []chan AuditEvent
 }
 
+// NewSubject creates an empty audit subject with no observers.
 func NewSubject() *Subject {
 	return &Subject{}
 }
 
+// Register adds an observer to receive audit events.
 func (s *Subject) Register(o Observer) {
 	s.observers = append(s.observers, o)
 }
 
+// NotifyAll sends an event to all registered observers asynchronously.
 func (s *Subject) NotifyAll(event AuditEvent) {
 	if len(s.observers) == 0 {
 		return
@@ -35,6 +40,7 @@ func (s *Subject) NotifyAll(event AuditEvent) {
 	}
 }
 
+// Close stops all observer workers and cleans up resources.
 func (s *Subject) Close() {
 	if s.eventChs == nil {
 		return

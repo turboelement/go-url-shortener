@@ -6,11 +6,13 @@ import (
 	"os"
 )
 
+// FileObserver writes audit events to a file as JSON lines.
 type FileObserver struct {
 	filePath string
 	file     *os.File
 }
 
+// NewFileObserver creates an observer that appends audit events to a file.
 func NewFileObserver(filePath string) *FileObserver {
 	fo := &FileObserver{
 		filePath: filePath,
@@ -26,6 +28,7 @@ func NewFileObserver(filePath string) *FileObserver {
 	return fo
 }
 
+// Notify writes the audit event as a JSON line to the file.
 func (fo *FileObserver) Notify(event AuditEvent) error {
 	if fo.file == nil {
 		return fmt.Errorf("file not opened: %s", fo.filePath)

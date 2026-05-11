@@ -1,3 +1,4 @@
+// Package handler provides HTTP handlers for URL shortener endpoints.
 package handler
 
 import (
@@ -21,25 +22,32 @@ import (
 // matches the original_url VARCHAR(4096) field limit in the db
 const maxOriginalURLLength = 4096
 
+// JSONRequest is the request body for the JSON shorten endpoint.
 type JSONRequest struct {
 	URL string `json:"url"`
 }
 
+// JSONResponse is the response from the JSON shorten endpoint.
 type JSONResponse struct {
 	Result string `json:"result"`
 }
 
+// BatchRequest is a list of URLs to shorten in one batch.
 type BatchRequest []service.BatchItem
 
+// BatchResponse contains the shortened URLs for a batch request.
 type BatchResponse []service.BatchResult
 
+// UserURLsResponse lists all URLs belonging to a user.
 type UserURLsResponse []UserURLItem
 
+// UserURLItem is a single short-original URL pair for a user.
 type UserURLItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// PostHandler handles POST /. Reads a plain-text URL and returns a short URL.
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -115,6 +123,7 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 	}
 }
 
+// PostJSONHandler handles POST /api/shorten. Reads JSON with a URL and returns a short URL as JSON.
 func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -193,6 +202,7 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 	}
 }
 
+// BatchShortenHandler handles POST /api/shorten/batch. Shortens multiple URLs at once.
 func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -235,6 +245,7 @@ func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.Han
 	}
 }
 
+// GetHandler handles GET /{id}. Redirects to the original URL via HTTP 307.
 func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -289,6 +300,7 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 	}
 }
 
+// GetUserURLsHandler handles GET /api/user/urls. Returns all URLs created by the current user.
 func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -333,6 +345,7 @@ func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.Hand
 	}
 }
 
+// DeleteUserURLsHandler handles DELETE /api/user/urls. Marks the user's URLs as deleted (async).
 func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -363,6 +376,7 @@ func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
 	}
 }
 
+// PingHandler handles GET /ping. Checks database connectivity, returns 200 if OK.
 func PingHandler(repo repository.URLRepositoryInterface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())

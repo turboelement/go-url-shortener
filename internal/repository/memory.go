@@ -5,6 +5,7 @@ import (
 	"sync"
 )
 
+// URLEntry stores a single URL record in memory.
 type URLEntry struct {
 	ShortID     string
 	OriginalURL string
@@ -12,6 +13,7 @@ type URLEntry struct {
 	DeletedFlag bool
 }
 
+// URLRepository is an in-memory implementation of URLRepositoryInterface.
 type URLRepository struct {
 	store     map[string]URLEntry // shortID | URLEntry (value, not pointer — reduces GC pressure)
 	rev       map[string]string   // reverse originalURL | shortID
@@ -19,6 +21,7 @@ type URLRepository struct {
 	mu        sync.RWMutex
 }
 
+// NewURLRepository creates an empty in-memory URL repository.
 func NewURLRepository() *URLRepository {
 	return &URLRepository{
 		store:     make(map[string]URLEntry),
@@ -28,6 +31,7 @@ func NewURLRepository() *URLRepository {
 	}
 }
 
+// Save stores a URL and returns its short ID. Returns ErrURLAlreadyExists if duplicate.
 func (r *URLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -45,6 +49,7 @@ func (r *URLRepository) Save(ctx context.Context, shortID, originalURL string) (
 	return shortID, nil
 }
 
+// Get returns the original URL for a short ID. Thread-safe.
 func (r *URLRepository) Get(ctx context.Context, shortID string) (string, error) {
 	r.mu.RLock() // allows parralel Get
 	defer r.mu.RUnlock()
@@ -59,10 +64,12 @@ func (r *URLRepository) Get(ctx context.Context, shortID string) (string, error)
 	return entry.OriginalURL, nil
 }
 
+// Ping always returns nil (in-memory is always available).
 func (r *URLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
+// SaveWithUser stores a URL linked to a user. Returns ErrURLAlreadyExists if duplicate.
 func (r *URLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -83,6 +90,7 @@ func (r *URLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, 
 	return shortID, nil
 }
 
+// GetUserURLs returns all non-deleted URLs for a given user.
 func (r *URLRepository) GetUserURLs(ctx context.Context, userID string) ([]UserURL, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -106,6 +114,7 @@ func (r *URLRepository) GetUserURLs(ctx context.Context, userID string) ([]UserU
 	return result, nil
 }
 
+// BatchSave stores multiple URL entries atomically.
 func (r *URLRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -128,6 +137,7 @@ func (r *URLRepository) BatchSave(ctx context.Context, userID string, items []Ba
 	return nil
 }
 
+// DeleteUserURLs soft-deletes the specified URLs owned by the user.
 func (r *URLRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

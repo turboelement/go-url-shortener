@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// FileURLRepository stores URLs in-memory and also persists them to a file.
 type FileURLRepository struct {
 	*URLRepository // embedding in-memory repo
 	filePath       string
@@ -18,6 +19,7 @@ type FileURLRepository struct {
 	bufWriter      *bufio.Writer
 }
 
+// FileEntry represents one line in the JSON file storage.
 type FileEntry struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -26,6 +28,7 @@ type FileEntry struct {
 	DeletedFlag bool   `json:"deleted_flag,omitempty"`
 }
 
+// NewFileURLRepository creates a file-backed repository, loading existing data from the file.
 func NewFileURLRepository(filePath string) *FileURLRepository {
 	repo := &FileURLRepository{
 		URLRepository: NewURLRepository(),
@@ -44,6 +47,7 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 	return repo
 }
 
+// Save stores a URL in memory and appends it to the file. Returns ErrURLAlreadyExists if duplicate.
 func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	storedID, err := r.URLRepository.Save(ctx, shortID, originalURL)
 	if err != nil {
@@ -75,6 +79,7 @@ func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL strin
 	return storedID, nil
 }
 
+// SaveWithUser stores a user-linked URL in memory and appends it to the file.
 func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
 	storedID, err := r.URLRepository.SaveWithUser(ctx, shortID, originalURL, userID)
 	if err != nil {
@@ -107,10 +112,12 @@ func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalU
 	return storedID, nil
 }
 
+// Ping always returns nil (file repo uses in-memory storage).
 func (r *FileURLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
+// BatchSave stores multiple URLs atomically and writes them to the file.
 func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

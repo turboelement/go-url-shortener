@@ -1,3 +1,4 @@
+// Package middleware provides HTTP middleware for the URL shortener.
 package middleware
 
 import (
@@ -6,6 +7,7 @@ import (
 	"strings"
 )
 
+// Decompress is middleware that decompresses gzip-encoded request bodies.
 func Decompress(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {

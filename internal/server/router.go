@@ -1,3 +1,4 @@
+// Package server sets up the HTTP router and all routes.
 package server
 
 import (
@@ -15,6 +16,7 @@ import (
 	"go-url-shortener/internal/service"
 )
 
+// RouterDeps contains all dependencies needed to create the router.
 type RouterDeps struct {
 	BaseURL      string
 	CookieSecret string
@@ -24,6 +26,7 @@ type RouterDeps struct {
 	AuditSubject *audit.Subject
 }
 
+// NewRouter creates and configures the chi router with all routes and middleware.
 func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Decompress)

@@ -12,10 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// PostgresRepository implements URLRepositoryInterface using PostgreSQL.
 type PostgresRepository struct {
 	db *pgxpool.Pool
 }
 
+// NewPostgresRepository connects to PostgreSQL, runs migrations, and returns a repository.
 func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	if err := runMigrations(dsn); err != nil {
 		return nil, err
@@ -35,6 +37,7 @@ func NewPostgresRepository(dsn string) (*PostgresRepository, error) {
 	return &PostgresRepository{db: pool}, nil
 }
 
+// Save inserts a URL into the database. Returns ErrURLAlreadyExists if the URL already exists.
 func (r *PostgresRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	var returnedShortID string
 	err := r.db.QueryRow(ctx,
@@ -59,6 +62,7 @@ func (r *PostgresRepository) Save(ctx context.Context, shortID, originalURL stri
 	return returnedShortID, nil
 }
 
+// Get retrieves the original URL by short ID. Returns ErrURLNotFound or ErrURLMarkedAsDeleted.
 func (r *PostgresRepository) Get(ctx context.Context, shortID string) (string, error) {
 	var originalURL string
 	var isDeleted bool
@@ -78,10 +82,12 @@ func (r *PostgresRepository) Get(ctx context.Context, shortID string) (string, e
 	return originalURL, nil
 }
 
+// Ping checks the database connection health.
 func (r *PostgresRepository) Ping(ctx context.Context) error {
 	return r.db.Ping(ctx)
 }
 
+// SaveWithUser inserts a URL linked to a user. Returns ErrURLAlreadyExists if duplicate.
 func (r *PostgresRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
 	var returnedShortID string
 	err := r.db.QueryRow(ctx,
@@ -106,6 +112,7 @@ func (r *PostgresRepository) SaveWithUser(ctx context.Context, shortID, original
 	return returnedShortID, nil
 }
 
+// GetUserURLs returns all non-deleted URLs for the given user.
 func (r *PostgresRepository) GetUserURLs(ctx context.Context, userID string) ([]UserURL, error) {
 	rows, err := r.db.Query(ctx,
 		"SELECT short_id, original_url FROM urls WHERE user_id = $1 AND is_deleted = false ORDER BY created_at DESC",
@@ -135,6 +142,7 @@ func (r *PostgresRepository) GetUserURLs(ctx context.Context, userID string) ([]
 	return results, nil
 }
 
+// BatchSave inserts multiple URL entries in a single database batch.
 func (r *PostgresRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	if len(items) == 0 {
 		return nil
@@ -168,6 +176,7 @@ func (r *PostgresRepository) BatchSave(ctx context.Context, userID string, items
 	return nil
 }
 
+// DeleteUserURLs soft-deletes the specified URLs owned by the user.
 func (r *PostgresRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
 	if len(shortIDs) == 0 {
 		return nil
@@ -194,6 +203,7 @@ func (r *PostgresRepository) DeleteUserURLs(ctx context.Context, userID string, 
 	return nil
 }
 
+// Close closes the database connection pool.
 func (r *PostgresRepository) Close() {
 	r.db.Close()
 }
