@@ -13,19 +13,16 @@ type FileObserver struct {
 }
 
 // NewFileObserver creates an observer that appends audit events to a file.
-func NewFileObserver(filePath string) *FileObserver {
-	fo := &FileObserver{
-		filePath: filePath,
-	}
-
+func NewFileObserver(filePath string) (*FileObserver, error) {
 	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		fmt.Printf("Error opening file: %s: %v\n", filePath, err)
-	} else {
-		fo.file = f
+		return nil, fmt.Errorf("open audit file %s: %w", filePath, err)
 	}
 
-	return fo
+	return &FileObserver{
+		filePath: filePath,
+		file:     f,
+	}, nil
 }
 
 // Notify writes the audit event as a JSON line to the file.
@@ -44,5 +41,13 @@ func (fo *FileObserver) Notify(event AuditEvent) error {
 		return err
 	}
 
+	return nil
+}
+
+// Close closes the underlying file.
+func (fo *FileObserver) Close() error {
+	if fo.file != nil {
+		return fo.file.Close()
+	}
 	return nil
 }

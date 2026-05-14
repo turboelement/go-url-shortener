@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,8 +23,9 @@ func TestSubject_WithFileObserver(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	s := NewSubject()
-	fo := NewFileObserver(path)
-	defer fo.file.Close()
+	fo, err := NewFileObserver(path)
+	require.NoError(t, err)
+	defer fo.Close()
 	s.Register(fo)
 
 	event := AuditEvent{
@@ -36,8 +36,7 @@ func TestSubject_WithFileObserver(t *testing.T) {
 	}
 
 	s.NotifyAll(event)
-
-	time.Sleep(100 * time.Millisecond)
+	s.Flush()
 
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -45,7 +44,6 @@ func TestSubject_WithFileObserver(t *testing.T) {
 	var decoded AuditEvent
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
-
 	assert.Equal(t, event, decoded)
 	s.Close()
 }

@@ -65,7 +65,11 @@ func main() {
 
 	auditSubject := audit.NewSubject()
 	if cfg.AuditFilePath != "" {
-		auditSubject.Register(audit.NewFileObserver(cfg.AuditFilePath))
+		fo, err := audit.NewFileObserver(cfg.AuditFilePath)
+		if err != nil {
+			logger.Fatal("failed to create file audit observer", zap.Error(err))
+		}
+		auditSubject.Register(fo)
 		logger.Info("Using file audit", zap.String("file_path", cfg.AuditFilePath))
 	}
 	if cfg.AuditURL != "" {
