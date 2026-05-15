@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// setupBenchServer создаёт тестовый сервер с in-memory репозиторием для бенчмарков
+// setupBenchServer creates a test server with in-memory repository for benchmarks
 func setupBenchServer(b *testing.B) (*httptest.Server, *service.ShortenerService) {
 	b.Helper()
 
@@ -23,7 +24,7 @@ func setupBenchServer(b *testing.B) (*httptest.Server, *service.ShortenerService
 
 	r := chi.NewRouter()
 
-	// Добавляем middleware, который проставляет userID в контекст
+	// Add middleware, set userID in context
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := auth.SetUserIDInContext(r.Context(), benchUserID)
@@ -55,12 +56,12 @@ func BenchmarkPostHandler(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		body := strings.NewReader("https://yandex.ru/search/?text=benchmark+test+query+" + itoa(i))
-		// Создаём новый request каждый раз, т.к. body потребляется
+		body := strings.NewReader("https://yandex.ru/search/?text=benchmark+test+query+" + strconv.Itoa(i))
+		// Create new request each time since the body is consumed
 		req := httptest.NewRequest(http.MethodPost, ts.URL+"/", body)
 		w := httptest.NewRecorder()
 
-		// Используем транспорт напрямую
+		// Use handler directly
 		ts.Config.Handler.ServeHTTP(w, req)
 
 		if w.Code != http.StatusCreated && w.Code != http.StatusConflict {
@@ -78,7 +79,7 @@ func BenchmarkPostJSONHandler(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		jsonBody := `{"url":"https://ya.ru/benchmark/path/` + itoa(i) + `"}`
+		jsonBody := `{"url":"https://ya.ru/benchmark/path/` + strconv.Itoa(i) + `"}`
 		req := httptest.NewRequest(
 			http.MethodPost,
 			ts.URL+"/api/shorten",
@@ -99,11 +100,11 @@ func BenchmarkBatchShortenHandler(b *testing.B) {
 	defer ts.Close()
 	defer svc.Close()
 
-	// Предсоздадим разные batch-запросы, чтобы не мерить генерацию JSON
+	// Pre-create different batch requests to avoid measuring JSON generation
 	numBatches := 100
 	batches := make([]string, numBatches)
 	for i := 0; i < numBatches; i++ {
-		batches[i] = `[{"correlation_id":"cid-` + itoa(i) + `-1","original_url":"https://example.com/` + itoa(i) + `/path1"},{"correlation_id":"cid-` + itoa(i) + `-2","original_url":"https://example.com/` + itoa(i) + `/path2"},{"correlation_id":"cid-` + itoa(i) + `-3","original_url":"https://example.com/` + itoa(i) + `/path3"}]`
+		batches[i] = `[{"correlation_id":"cid-` + strconv.Itoa(i) + `-1","original_url":"https://example.com/` + strconv.Itoa(i) + `/path1"},{"correlation_id":"cid-` + strconv.Itoa(i) + `-2","original_url":"https://example.com/` + strconv.Itoa(i) + `/path2"},{"correlation_id":"cid-` + strconv.Itoa(i) + `-3","original_url":"https://example.com/` + strconv.Itoa(i) + `/path3"}]`
 	}
 
 	b.ResetTimer()
@@ -130,7 +131,7 @@ func BenchmarkGetHandler(b *testing.B) {
 	defer ts.Close()
 	defer svc.Close()
 
-	// Предварительно сохраняем URL
+	// Pre-save URL
 	ctx := context.Background()
 	shortID, err := svc.Shorten(ctx, "https://example.com/benchmark-get")
 	if err != nil {
@@ -156,10 +157,10 @@ func BenchmarkGetUserURLsHandler(b *testing.B) {
 	defer ts.Close()
 	defer svc.Close()
 
-	// Предварительно сохраняем URL для пользователя
+	// Pre-save URLs for user
 	ctx := context.Background()
 	for i := 0; i < 100; i++ {
-		_, err := svc.ShortenWithUser(ctx, "https://example.com/user/"+itoa(i), benchUserID)
+		_, err := svc.ShortenWithUser(ctx, "https://example.com/user/"+strconv.Itoa(i), benchUserID)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -177,17 +178,4 @@ func BenchmarkGetUserURLsHandler(b *testing.B) {
 			b.Fatalf("expected 200, got %d", w.Code)
 		}
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	s := ""
-	for n > 0 {
-		digit := n % 10
-		s = string('0'+rune(digit)) + s
-		n /= 10
-	}
-	return s
 }

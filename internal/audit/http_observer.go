@@ -3,6 +3,7 @@ package audit
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"time"
 )
@@ -33,6 +34,9 @@ func (ho *HTTPObserver) Notify(event AuditEvent) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	// Drain response body so the TCP connection can be reused
+	io.Copy(io.Discard, resp.Body)
 
 	return nil
 }

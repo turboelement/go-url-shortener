@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"go-url-shortener/internal/repository"
@@ -30,7 +31,7 @@ func BenchmarkShorten(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		url := "https://example.com/very/long/url/path/for/testing/" + itoa(i)
+		url := "https://example.com/very/long/url/path/for/testing/" + strconv.Itoa(i)
 		_, err := svc.Shorten(ctx, url)
 		if err != nil {
 			b.Fatal(err)
@@ -48,7 +49,7 @@ func BenchmarkShortenWithUser(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		url := "https://example.com/very/long/url/path/for/testing/" + itoa(i)
+		url := "https://example.com/very/long/url/path/for/testing/" + strconv.Itoa(i)
 		_, err := svc.ShortenWithUser(ctx, url, "test-user-id")
 		if err != nil {
 			b.Fatal(err)
@@ -82,8 +83,8 @@ func benchmarkBatchShorten(b *testing.B, batchSize int) {
 		items := make([]BatchItem, batchSize)
 		for j := 0; j < batchSize; j++ {
 			items[j] = BatchItem{
-				CorrelationID: "corr-" + itoa(i*batchSize+j),
-				OriginalURL:   "https://example.com/" + itoa(i*batchSize+j),
+				CorrelationID: "corr-" + strconv.Itoa(i*batchSize+j),
+				OriginalURL:   "https://example.com/" + strconv.Itoa(i*batchSize+j),
 			}
 		}
 
@@ -104,7 +105,7 @@ func BenchmarkGetOriginalURL(b *testing.B) {
 	// Pre-populate with some URLs
 	shortIDs := make([]string, 1000)
 	for i := 0; i < 1000; i++ {
-		url := "https://example.com/bench/get/" + itoa(i)
+		url := "https://example.com/bench/get/" + strconv.Itoa(i)
 		shortID, err := svc.Shorten(ctx, url)
 		if err != nil {
 			b.Fatal(err)
@@ -133,7 +134,7 @@ func BenchmarkGetUserURLs(b *testing.B) {
 	// Pre-populate with 1000 URLs for a specific user
 	userID := "bench-user-id"
 	for i := 0; i < 1000; i++ {
-		url := "https://example.com/bench/user/" + itoa(i)
+		url := "https://example.com/bench/user/" + strconv.Itoa(i)
 		_, err := svc.ShortenWithUser(ctx, url, userID)
 		if err != nil {
 			b.Fatal(err)
@@ -161,7 +162,7 @@ func BenchmarkDeleteUserURLsAsync(b *testing.B) {
 	// Pre-populate with URLs
 	shortIDs := make([]string, 100)
 	for i := 0; i < 100; i++ {
-		url := "https://example.com/bench/delete/" + itoa(i)
+		url := "https://example.com/bench/delete/" + strconv.Itoa(i)
 		shortID, err := svc.ShortenWithUser(ctx, url, "bench-delete-user")
 		if err != nil {
 			b.Fatal(err)
@@ -175,18 +176,4 @@ func BenchmarkDeleteUserURLsAsync(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		svc.DeleteUserURLsAsync("bench-delete-user", shortIDs)
 	}
-}
-
-// Simple int to string conversion without fmt.Sprintf to avoid extra allocs in benchmarks
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	s := ""
-	for n > 0 {
-		digit := n % 10
-		s = string('0'+rune(digit)) + s
-		n /= 10
-	}
-	return s
 }

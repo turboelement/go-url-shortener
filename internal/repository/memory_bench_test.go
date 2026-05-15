@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"testing"
 )
 
@@ -13,8 +14,8 @@ func BenchmarkMemorySave(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		shortID := "short-" + itoa(i)
-		url := "https://example.com/" + itoa(i)
+		shortID := "short-" + strconv.Itoa(i)
+		url := "https://example.com/" + strconv.Itoa(i)
 		_, err := repo.Save(ctx, shortID, url)
 		if err != nil {
 			b.Fatal(err)
@@ -30,8 +31,8 @@ func BenchmarkMemorySaveWithUser(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		shortID := "short-" + itoa(i)
-		url := "https://example.com/" + itoa(i)
+		shortID := "short-" + strconv.Itoa(i)
+		url := "https://example.com/" + strconv.Itoa(i)
 		_, err := repo.SaveWithUser(ctx, shortID, url, "bench-user")
 		if err != nil {
 			b.Fatal(err)
@@ -90,8 +91,8 @@ func benchmarkGetUserURLs(b *testing.B, numURLs int, userID string) {
 	ctx := context.Background()
 
 	for i := 0; i < numURLs; i++ {
-		shortID := "short-" + itoa(i)
-		url := "https://example.com/" + itoa(i)
+		shortID := "short-" + strconv.Itoa(i)
+		url := "https://example.com/" + strconv.Itoa(i)
 		_, err := repo.SaveWithUser(ctx, shortID, url, userID)
 		if err != nil {
 			b.Fatal(err)
@@ -132,8 +133,8 @@ func benchmarkBatchSave(b *testing.B, batchSize int) {
 		items := make([]BatchEntry, batchSize)
 		for j := 0; j < batchSize; j++ {
 			items[j] = BatchEntry{
-				ShortID:     "batch-" + itoa(i) + "-" + itoa(j),
-				OriginalURL: "https://example.com/batch/" + itoa(i) + "/" + itoa(j),
+				ShortID:     "batch-" + strconv.Itoa(i) + "-" + strconv.Itoa(j),
+				OriginalURL: "https://example.com/batch/" + strconv.Itoa(i) + "/" + strconv.Itoa(j),
 			}
 		}
 
@@ -151,8 +152,8 @@ func BenchmarkMemoryDeleteUserURLs(b *testing.B) {
 	// Pre-populate
 	shortIDs := make([]string, 100)
 	for i := 0; i < 100; i++ {
-		shortID := "del-" + itoa(i)
-		url := "https://example.com/del/" + itoa(i)
+		shortID := "del-" + strconv.Itoa(i)
+		url := "https://example.com/del/" + strconv.Itoa(i)
 		_, err := repo.SaveWithUser(ctx, shortID, url, "test-user")
 		if err != nil {
 			b.Fatal(err)
@@ -169,17 +170,4 @@ func BenchmarkMemoryDeleteUserURLs(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	s := ""
-	for n > 0 {
-		digit := n % 10
-		s = string('0'+rune(digit)) + s
-		n /= 10
-	}
-	return s
 }

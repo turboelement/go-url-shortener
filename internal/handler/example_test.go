@@ -19,6 +19,7 @@ import (
 )
 
 // setupTestRouter creates a test server with all routes for the examples.
+// Note: audit middleware is not included.
 func setupTestRouter() (*httptest.Server, *http.Client, string) {
 	repo := repository.NewURLRepository()
 	svc := service.NewShortenerService(repo)
