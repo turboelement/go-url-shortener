@@ -1,3 +1,4 @@
+// Package handler provides HTTP handlers for URL shortener endpoints.
 package handler
 
 import (
@@ -7,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/logger"
 	"go-url-shortener/internal/middleware"
 	"go-url-shortener/internal/repository"
@@ -17,31 +20,39 @@ import (
 )
 
 // matches the original_url VARCHAR(4096) field limit in the db
-const MaxOriginalURLLength = 4096
+const maxOriginalURLLength = 4096
 
+// JSONRequest is the request body for the JSON shorten endpoint.
 type JSONRequest struct {
 	URL string `json:"url"`
 }
 
+// JSONResponse is the response from the JSON shorten endpoint.
 type JSONResponse struct {
 	Result string `json:"result"`
 }
 
+// BatchRequest is a list of URLs to shorten in one batch.
 type BatchRequest []service.BatchItem
 
+// BatchResponse contains the shortened URLs for a batch request.
 type BatchResponse []service.BatchResult
 
+// UserURLsResponse lists all URLs belonging to a user.
 type UserURLsResponse []UserURLItem
 
+// UserURLItem is a single short-original URL pair for a user.
 type UserURLItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 }
 
+// PostHandler handles POST /. Reads a plain-text URL and returns a short URL.
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxOriginalURLLength+1024)
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Debug("Cannot read request body", zap.Error(err))
@@ -57,10 +68,10 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 			return
 		}
 
-		if len(originalURL) > MaxOriginalURLLength {
+		if len(originalURL) > maxOriginalURLLength {
 			log.Debug("URL exceeds maximum allowed length",
 				zap.Int("length", len(originalURL)),
-				zap.Int("max", MaxOriginalURLLength),
+				zap.Int("max", maxOriginalURLLength),
 			)
 			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 			return
@@ -97,9 +108,22 @@ func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(status)
 		w.Write([]byte(shortURL))
+
+		if status == http.StatusCreated {
+			as := audit.FromContext(r.Context())
+			if as != nil {
+				as.NotifyAll(audit.AuditEvent{
+					Timestamp: time.Now().Unix(),
+					Action:    audit.ActionShorten,
+					UserID:    userID,
+					URL:       originalURL,
+				})
+			}
+		}
 	}
 }
 
+// PostJSONHandler handles POST /api/shorten. Reads JSON with a URL and returns a short URL as JSON.
 func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -118,10 +142,10 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 			return
 		}
 
-		if len(req.URL) > MaxOriginalURLLength {
+		if len(req.URL) > maxOriginalURLLength {
 			log.Debug("URL exceeds maximum allowed length",
 				zap.Int("length", len(req.URL)),
-				zap.Int("max", MaxOriginalURLLength),
+				zap.Int("max", maxOriginalURLLength),
 			)
 			http.Error(w, http.StatusText(http.StatusRequestEntityTooLarge), http.StatusRequestEntityTooLarge)
 			return
@@ -163,9 +187,22 @@ func PostJSONHandler(svc *service.ShortenerService, baseURL string) http.Handler
 		w.WriteHeader(status)
 
 		json.NewEncoder(w).Encode(resp)
+
+		if status == http.StatusCreated {
+			as := audit.FromContext(r.Context())
+			if as != nil {
+				as.NotifyAll(audit.AuditEvent{
+					Timestamp: time.Now().Unix(),
+					Action:    audit.ActionShorten,
+					UserID:    userID,
+					URL:       req.URL,
+				})
+			}
+		}
 	}
 }
 
+// BatchShortenHandler handles POST /api/shorten/batch. Shortens multiple URLs at once.
 func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -208,6 +245,7 @@ func BatchShortenHandler(svc *service.ShortenerService, baseURL string) http.Han
 	}
 }
 
+// GetHandler handles GET /{id}. Redirects to the original URL via HTTP 307.
 func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -244,9 +282,25 @@ func GetHandler(svc *service.ShortenerService) http.HandlerFunc {
 
 		w.Header().Set("Location", originalURL)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+
+		as := audit.FromContext(r.Context())
+		if as != nil {
+			userID, err := middleware.GetUserIDFromContext(r)
+			if err != nil {
+				userID = ""
+			}
+
+			as.NotifyAll(audit.AuditEvent{
+				Timestamp: time.Now().Unix(),
+				Action:    audit.ActionFollow,
+				UserID:    userID,
+				URL:       originalURL,
+			})
+		}
 	}
 }
 
+// GetUserURLsHandler handles GET /api/user/urls. Returns all URLs created by the current user.
 func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -291,6 +345,7 @@ func GetUserURLsHandler(svc *service.ShortenerService, baseURL string) http.Hand
 	}
 }
 
+// DeleteUserURLsHandler handles DELETE /api/user/urls. Marks the user's URLs as deleted (async).
 func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
@@ -321,6 +376,7 @@ func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
 	}
 }
 
+// PingHandler handles GET /ping. Checks database connectivity, returns 200 if OK.
 func PingHandler(repo repository.URLRepositoryInterface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())

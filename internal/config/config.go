@@ -1,19 +1,26 @@
+// Package config loads and stores application configuration from flags and environment variables.
 package config
 
 import (
 	"flag"
 	"fmt"
+	"go-url-shortener/internal/profiler"
 	"os"
+	"strconv"
 
 	"github.com/google/uuid"
 )
 
+// Config stores application configuration from flags and env vars.
 type Config struct {
 	ServerAddr      string // ":8080" or "localhost:8888"
 	BaseURL         string // "http://localhost:8080"
 	FileStoragePath string
 	DatabaseDSN     string
 	CookieSecret    string
+	AuditFilePath   string
+	AuditURL        string
+	EnablePprof     bool
 }
 
 const (
@@ -22,12 +29,16 @@ const (
 	envFileStoragePath = "FILE_STORAGE_PATH"
 	envDatabaseDSN     = "DATABASE_DSN"
 	envCookieSecret    = "COOKIE_SECRET"
+	envAuditFile       = "AUDIT_FILE"
+	envAuditURL        = "AUDIT_URL"
+	envEnablePprof     = "ENABLE_PPROF"
 
 	defaultServerAddr      = ":8080"
 	defaultBaseURL         = "http://localhost:8080"
-	defaultFileStoragePath = "./urls.json"
+	defaultFileStoragePath = "./urls.txt"
 )
 
+// New reads flags and env vars and returns a populated Config.
 func New() *Config {
 	cfg := &Config{
 		ServerAddr:      defaultServerAddr,
@@ -35,6 +46,9 @@ func New() *Config {
 		FileStoragePath: defaultFileStoragePath,
 		DatabaseDSN:     "",
 		CookieSecret:    "",
+		AuditFilePath:   "",
+		AuditURL:        "",
+		EnablePprof:     false,
 	}
 
 	// parsing flags
@@ -43,6 +57,9 @@ func New() *Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "URL (JSON) storage file path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "PostgreSQL (DATABASE_DSN)")
 	flag.StringVar(&cfg.CookieSecret, "s", cfg.CookieSecret, "Secret key for cookie signing")
+	flag.StringVar(&cfg.AuditFilePath, "audit-file", cfg.AuditFilePath, "Audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit URL address")
+	flag.BoolVar(&cfg.EnablePprof, "enable-pprof", false, "Enable debug/pprof on URL address "+profiler.DefaultAddr)
 	flag.Parse()
 
 	// parsing env
@@ -60,6 +77,20 @@ func New() *Config {
 	}
 	if v, ok := os.LookupEnv(envCookieSecret); ok {
 		cfg.CookieSecret = v
+	}
+	if v, ok := os.LookupEnv(envAuditFile); ok {
+		cfg.AuditFilePath = v
+	}
+	if v, ok := os.LookupEnv(envAuditURL); ok {
+		cfg.AuditURL = v
+	}
+	if val, ok := os.LookupEnv(envEnablePprof); ok {
+		enabled, err := strconv.ParseBool(val)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid ENABLE_PPROF value")
+			os.Exit(1)
+		}
+		cfg.EnablePprof = enabled
 	}
 
 	if cfg.ServerAddr == "" {

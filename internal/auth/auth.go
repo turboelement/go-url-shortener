@@ -1,3 +1,4 @@
+// Package auth handles user identification via JWT-signed cookies.
 package auth
 
 import (
@@ -11,10 +12,11 @@ import (
 )
 
 const (
-	CookieName   = "user_id"
-	CookieMaxAge = time.Hour * 24 * 30 // 30 days
+	cookieName   = "user_id"
+	cookieMaxAge = time.Hour * 24 * 30 // 30 days
 )
 
+// GenerateUserID creates a new random UUID for identifying a user.
 func GenerateUserID() (string, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
@@ -23,15 +25,16 @@ func GenerateUserID() (string, error) {
 	return id.String(), nil
 }
 
-type CustomClaims struct {
+type customClaims struct {
 	jwt.RegisteredClaims
 }
 
+// SignUserID creates a signed JWT token containing the user ID.
 func SignUserID(userID, secret string) (string, error) {
-	claims := CustomClaims{
+	claims := customClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(CookieMaxAge)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cookieMaxAge)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -45,8 +48,9 @@ func SignUserID(userID, secret string) (string, error) {
 	return signedToken, nil
 }
 
+// VerifyUserID validates a JWT token and returns the user ID if valid.
 func VerifyUserID(tokenString, secret string) (string, bool) {
-	claims := &CustomClaims{}
+	claims := &customClaims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -62,6 +66,7 @@ func VerifyUserID(tokenString, secret string) (string, bool) {
 	return claims.Subject, true
 }
 
+// SetAuthCookie sets a signed user ID cookie on the HTTP response.
 func SetAuthCookie(w http.ResponseWriter, userID, secret string) error {
 	signedValue, err := SignUserID(userID, secret)
 	if err != nil {
@@ -69,9 +74,9 @@ func SetAuthCookie(w http.ResponseWriter, userID, secret string) error {
 	}
 
 	cookie := &http.Cookie{
-		Name:     CookieName,
+		Name:     cookieName,
 		Value:    signedValue,
-		MaxAge:   int(CookieMaxAge.Seconds()),
+		MaxAge:   int(cookieMaxAge.Seconds()),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
@@ -82,8 +87,9 @@ func SetAuthCookie(w http.ResponseWriter, userID, secret string) error {
 	return nil
 }
 
+// GetUserIDFromCookie extracts and validates the user ID from the request cookie.
 func GetUserIDFromCookie(r *http.Request, secret string) (string, bool, error) {
-	cookie, err := r.Cookie(CookieName)
+	cookie, err := r.Cookie(cookieName)
 	if err != nil {
 		if err == http.ErrNoCookie {
 			return "", false, nil
@@ -103,10 +109,12 @@ type contextKey string
 
 const userIDKey contextKey = "user_id"
 
+// SetUserIDInContext stores the user ID in the request context.
 func SetUserIDInContext(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, userIDKey, userID)
 }
 
+// GetUserIDFromContext retrieves the user ID from the request context.
 func GetUserIDFromContext(ctx context.Context) (string, error) {
 	val := ctx.Value(userIDKey)
 	if val == nil {

@@ -11,12 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// FileURLRepository stores URLs in-memory and also persists them to a file.
 type FileURLRepository struct {
 	*URLRepository // embedding in-memory repo
 	filePath       string
 	file           *os.File
+	bufWriter      *bufio.Writer
 }
 
+// FileEntry represents one line in the JSON file storage.
 type FileEntry struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
@@ -25,6 +28,7 @@ type FileEntry struct {
 	DeletedFlag bool   `json:"deleted_flag,omitempty"`
 }
 
+// NewFileURLRepository creates a file-backed repository, loading existing data from the file.
 func NewFileURLRepository(filePath string) *FileURLRepository {
 	repo := &FileURLRepository{
 		URLRepository: NewURLRepository(),
@@ -36,12 +40,14 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 		fmt.Printf("Error opening file: %s: %v\n", filePath, err)
 	} else {
 		repo.file = f
+		repo.bufWriter = bufio.NewWriterSize(f, 32*1024)
 	}
 
 	repo.loadFromFile()
 	return repo
 }
 
+// Save stores a URL in memory and appends it to the file. Returns ErrURLAlreadyExists if duplicate.
 func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	storedID, err := r.URLRepository.Save(ctx, shortID, originalURL)
 	if err != nil {
@@ -66,14 +72,14 @@ func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL strin
 		return "", fmt.Errorf("error marshaling to json: %w", err)
 	}
 
-	_, err = r.file.Write(append(data, '\n'))
-	if err != nil {
-		return "", fmt.Errorf("error writing to file: %w", err)
+	if err := r.writeLine(data); err != nil {
+		return "", err
 	}
 
 	return storedID, nil
 }
 
+// SaveWithUser stores a user-linked URL in memory and appends it to the file.
 func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error) {
 	storedID, err := r.URLRepository.SaveWithUser(ctx, shortID, originalURL, userID)
 	if err != nil {
@@ -99,18 +105,19 @@ func (r *FileURLRepository) SaveWithUser(ctx context.Context, shortID, originalU
 		return "", fmt.Errorf("error marshaling to json: %w", err)
 	}
 
-	_, err = r.file.Write(append(data, '\n'))
-	if err != nil {
-		return "", fmt.Errorf("error writing to file: %w", err)
+	if err := r.writeLine(data); err != nil {
+		return "", err
 	}
 
 	return storedID, nil
 }
 
+// Ping always returns nil (file repo uses in-memory storage).
 func (r *FileURLRepository) Ping(ctx context.Context) error {
 	return nil
 }
 
+// BatchSave stores multiple URLs atomically and writes them to the file.
 func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items []BatchEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -120,12 +127,16 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items 
 			continue
 		}
 
-		r.store[item.ShortID] = &URLEntry{
+		r.store[item.ShortID] = URLEntry{
 			ShortID:     item.ShortID,
 			OriginalURL: item.OriginalURL,
 			UserID:      userID,
 		}
 		r.rev[item.OriginalURL] = item.ShortID
+
+		if userID != "" {
+			r.userIndex[userID] = append(r.userIndex[userID], item.ShortID)
+		}
 
 		if r.file != nil {
 			entry := FileEntry{
@@ -140,9 +151,8 @@ func (r *FileURLRepository) BatchSave(ctx context.Context, userID string, items 
 				return fmt.Errorf("error marshaling to json: %w", err)
 			}
 
-			_, err = r.file.Write(append(data, '\n'))
-			if err != nil {
-				return fmt.Errorf("error writing to file: %w", err)
+			if err := r.writeLine(data); err != nil {
+				return err
 			}
 		}
 	}
@@ -177,13 +187,30 @@ func (r *FileURLRepository) loadFromFile() {
 		}
 
 		if entry.ShortURL != "" && entry.OriginalURL != "" {
-			r.store[entry.ShortURL] = &URLEntry{
+			r.store[entry.ShortURL] = URLEntry{
 				ShortID:     entry.ShortURL,
 				OriginalURL: entry.OriginalURL,
 				UserID:      entry.UserID,
 				DeletedFlag: entry.DeletedFlag,
 			}
 			r.rev[entry.OriginalURL] = entry.ShortURL
+
+			if entry.UserID != "" {
+				r.userIndex[entry.UserID] = append(r.userIndex[entry.UserID], entry.ShortURL)
+			}
 		}
 	}
+}
+
+func (r *FileURLRepository) writeLine(data []byte) error {
+	if r.bufWriter == nil {
+		return nil
+	}
+	if _, err := r.bufWriter.Write(data); err != nil {
+		return fmt.Errorf("error writing to buffer: %w", err)
+	}
+	if _, err := r.bufWriter.Write([]byte{'\n'}); err != nil {
+		return fmt.Errorf("error writing newline: %w", err)
+	}
+	return r.bufWriter.Flush()
 }

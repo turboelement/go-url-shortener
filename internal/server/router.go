@@ -1,3 +1,4 @@
+// Package server sets up the HTTP router and all routes.
 package server
 
 import (
@@ -7,6 +8,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware" //Compress
 	"go.uber.org/zap"
 
+	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/handler"
 	"go-url-shortener/internal/logger"
 	"go-url-shortener/internal/middleware"
@@ -14,14 +16,17 @@ import (
 	"go-url-shortener/internal/service"
 )
 
+// RouterDeps contains all dependencies needed to create the router.
 type RouterDeps struct {
 	BaseURL      string
 	CookieSecret string
 	Logger       *zap.Logger
 	Repo         repository.URLRepositoryInterface
 	Svc          *service.ShortenerService
+	AuditSubject *audit.Subject
 }
 
+// NewRouter creates and configures the chi router with all routes and middleware.
 func NewRouter(deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Decompress)
@@ -30,6 +35,8 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Use(chimiddleware.Compress(5, "application/json", "text/html"))
 
 	r.Use(middleware.AuthMiddleware(deps.CookieSecret, deps.Logger))
+
+	r.Use(audit.Middleware(deps.AuditSubject))
 
 	r.Post("/", handler.PostHandler(deps.Svc, deps.BaseURL))
 	r.Post("/api/shorten", handler.PostJSONHandler(deps.Svc, deps.BaseURL))

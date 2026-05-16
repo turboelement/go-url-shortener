@@ -1,3 +1,4 @@
+// Package logger provides context-aware logging using zap.
 package logger
 
 import (
@@ -12,10 +13,12 @@ import (
 
 type loggerKey struct{}
 
+// WithLogger stores a zap logger in the context.
 func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, logger)
 }
 
+// FromContext retrieves a zap logger from the context, or returns a no-op logger.
 func FromContext(ctx context.Context) *zap.Logger {
 	if lg, ok := ctx.Value(loggerKey{}).(*zap.Logger); ok && lg != nil {
 		return lg
@@ -23,6 +26,7 @@ func FromContext(ctx context.Context) *zap.Logger {
 	return zap.NewNop()
 }
 
+// Logger is HTTP middleware that logs each request with method, status, and duration.
 func Logger(zaplogger *zap.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

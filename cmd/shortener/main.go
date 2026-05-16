@@ -9,7 +9,9 @@ import (
 	"syscall"
 	"time"
 
+	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/config"
+	"go-url-shortener/internal/profiler"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
 	"go-url-shortener/internal/service"
@@ -30,6 +32,13 @@ func main() {
 		zap.String("ServerAddr", cfg.ServerAddr),
 		zap.String("BaseURL", cfg.BaseURL),
 	)
+
+	if cfg.EnablePprof {
+		p := profiler.New()
+		p.Start()
+		defer p.Close()
+		logger.Info("pprof server started", zap.String("address", p.Addr()))
+	}
 
 	var repo repository.URLRepositoryInterface
 
@@ -54,12 +63,28 @@ func main() {
 	svc := service.NewShortenerService(repo)
 	defer svc.Close()
 
+	auditSubject := audit.NewSubject()
+	if cfg.AuditFilePath != "" {
+		fo, err := audit.NewFileObserver(cfg.AuditFilePath)
+		if err != nil {
+			logger.Fatal("failed to create file audit observer", zap.Error(err))
+		}
+		auditSubject.Register(fo)
+		logger.Info("Using file audit", zap.String("file_path", cfg.AuditFilePath))
+	}
+	if cfg.AuditURL != "" {
+		auditSubject.Register(audit.NewHTTPObserver(cfg.AuditURL))
+		logger.Info("Using HTTP audit", zap.String("url", cfg.AuditURL))
+	}
+	defer auditSubject.Close()
+
 	router := server.NewRouter(server.RouterDeps{
 		BaseURL:      cfg.BaseURL,
 		CookieSecret: cfg.CookieSecret,
 		Logger:       logger,
 		Repo:         repo,
 		Svc:          svc,
+		AuditSubject: auditSubject,
 	})
 
 	srv := &http.Server{

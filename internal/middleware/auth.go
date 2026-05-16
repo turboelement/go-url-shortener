@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// AuthMiddleware sets or validates the user cookie on every request.
 func AuthMiddleware(secret string, logger *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +56,7 @@ func AuthMiddleware(secret string, logger *zap.Logger) func(http.Handler) http.H
 	}
 }
 
+// GetUserIDFromContext extracts the user ID from the request's context.
 func GetUserIDFromContext(r *http.Request) (string, error) {
 	return auth.GetUserIDFromContext(r.Context())
 }
