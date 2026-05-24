@@ -6,6 +6,7 @@ import (
 )
 
 // URLEntry stores a single URL record in memory.
+// generate:reset
 type URLEntry struct {
 	ShortID     string
 	OriginalURL string
@@ -14,6 +15,7 @@ type URLEntry struct {
 }
 
 // URLRepository is an in-memory implementation of URLRepositoryInterface.
+// generate:reset
 type URLRepository struct {
 	store     map[string]URLEntry // shortID | URLEntry (value, not pointer — reduces GC pressure)
 	rev       map[string]string   // reverse originalURL | shortID

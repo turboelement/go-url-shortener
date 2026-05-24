@@ -12,6 +12,7 @@ import (
 )
 
 // Config stores application configuration from flags and env vars.
+// generate:reset
 type Config struct {
 	ServerAddr      string // ":8080" or "localhost:8888"
 	BaseURL         string // "http://localhost:8080"

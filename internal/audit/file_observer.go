@@ -7,6 +7,7 @@ import (
 )
 
 // FileObserver writes audit events to a file as JSON lines.
+// generate:reset
 type FileObserver struct {
 	filePath string
 	file     *os.File

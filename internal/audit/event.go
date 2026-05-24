@@ -1,6 +1,7 @@
 package audit
 
 // AuditEvent represents an auditable action (shorten or follow).
+// generate:reset
 type AuditEvent struct {
 	Timestamp int64  `json:"ts"`
 	Action    Action `json:"action"`
