@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -19,7 +20,24 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
+func formatBuildInfo(label, value string) string {
+	if value == "" {
+		value = "N/A"
+	}
+	return fmt.Sprintf("%s: %s", label, value)
+}
+
 func main() {
+	fmt.Println(formatBuildInfo("Build version", buildVersion))
+	fmt.Println(formatBuildInfo("Build date", buildDate))
+	fmt.Println(formatBuildInfo("Build commit", buildCommit))
+
 	cfg := config.New()
 
 	logger, err := zap.NewProduction() // or zap.NewDevelopment()
