@@ -18,4 +18,3 @@ func (fo *FileObserver) Reset() {
 	}
 	fo.filePath = ""
 }
-

@@ -20,4 +20,3 @@ func (urlr *URLRepository) Reset() {
 	clear(urlr.rev)
 	clear(urlr.userIndex)
 }
-

@@ -41,4 +41,3 @@ func (rs *ResetableStruct) Reset() {
 		resetter.Reset()
 	}
 }
-

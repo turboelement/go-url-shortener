@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
@@ -466,7 +467,11 @@ func generateResetFile(pkg string, methods []resetMethod) (string, error) {
 		return "", fmt.Errorf("execute template: %w", err)
 	}
 
-	return buf.String(), nil
+	formatted, err := format.Source([]byte(buf.String()))
+	if err != nil {
+		return buf.String(), nil
+	}
+	return string(formatted), nil
 }
 
 func main() {

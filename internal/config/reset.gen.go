@@ -15,4 +15,3 @@ func (c *Config) Reset() {
 	c.AuditURL = ""
 	c.EnablePprof = false
 }
-
