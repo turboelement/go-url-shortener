@@ -12,6 +12,7 @@ import (
 )
 
 // Config stores application configuration from flags and env vars.
+// generate:reset
 type Config struct {
 	ServerAddr      string // ":8080" or "localhost:8888"
 	BaseURL         string // "http://localhost:8080"
@@ -87,15 +88,15 @@ func New() *Config {
 	if val, ok := os.LookupEnv(envEnablePprof); ok {
 		enabled, err := strconv.ParseBool(val)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Invalid ENABLE_PPROF value")
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Invalid ENABLE_PPROF value, using default (false)")
+		} else {
+			cfg.EnablePprof = enabled
 		}
-		cfg.EnablePprof = enabled
 	}
 
 	if cfg.ServerAddr == "" {
-		fmt.Fprintln(os.Stderr, "Server address can not be empty")
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "Server address can not be empty, using default :8080")
+		cfg.ServerAddr = ":8080"
 	}
 
 	// if BaseURL (flag -b or env BASE_URL) empty

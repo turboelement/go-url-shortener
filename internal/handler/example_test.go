@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 
 	"go-url-shortener/internal/auth"
 	"go-url-shortener/internal/handler"
@@ -64,7 +64,8 @@ func ExamplePostHandler() {
 	req.Header.Set("Content-Type", "text/plain")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	resp.Body.Close()
 	fmt.Println("POST / =>", resp.StatusCode)
@@ -81,7 +82,8 @@ func ExamplePostJSONHandler() {
 	jsonBody, _ := json.Marshal(map[string]string{"url": "https://golang.org"})
 	resp, err := client.Post(ts.URL+"/api/shorten", "application/json", bytes.NewReader(jsonBody))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	var jsonResp struct {
 		Result string `json:"result"`
@@ -105,7 +107,8 @@ func ExampleGetHandler() {
 	req.Header.Set("Content-Type", "text/plain")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	shortURLBytes, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -115,7 +118,8 @@ func ExampleGetHandler() {
 	shortID := shortURL[len(baseURL)+1:]
 	resp, err = client.Get(ts.URL + "/" + shortID)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	resp.Body.Close()
 	fmt.Println("GET /{id} =>", resp.StatusCode, "Location:", resp.Header.Get("Location"))
@@ -136,7 +140,8 @@ func ExampleBatchShortenHandler() {
 	batchBody, _ := json.Marshal(batch)
 	resp, err := client.Post(ts.URL+"/api/shorten/batch", "application/json", bytes.NewReader(batchBody))
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	var batchResp []struct {
 		CorrelationID string `json:"correlation_id"`
@@ -157,7 +162,8 @@ func ExampleGetUserURLsHandler() {
 
 	resp, err := client.Get(ts.URL + "/api/user/urls")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	resp.Body.Close()
 	fmt.Println("GET /api/user/urls =>", resp.StatusCode)
@@ -177,7 +183,8 @@ func ExampleDeleteUserURLsHandler() {
 	req.Header.Set("Content-Type", "text/plain")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	shortURLBytes, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -190,7 +197,8 @@ func ExampleDeleteUserURLsHandler() {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	resp.Body.Close()
 	fmt.Println("DELETE /api/user/urls =>", resp.StatusCode)
@@ -206,7 +214,8 @@ func ExamplePingHandler() {
 
 	resp, err := client.Get(ts.URL + "/ping")
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return
 	}
 	resp.Body.Close()
 	fmt.Println("GET /ping =>", resp.StatusCode)
