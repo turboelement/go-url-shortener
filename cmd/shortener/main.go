@@ -2,8 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"log"
+	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -114,13 +122,34 @@ func main() {
 
 	logger.Info("Server running at",
 		zap.String("address", cfg.BaseURL),
+		zap.Bool("https", cfg.EnableHTTPS),
 	)
 
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("server starting failed", zap.Error(err))
+	if cfg.EnableHTTPS {
+		tlsConfig, err := newTLSConfig(cfg.ServerAddr)
+		if err != nil {
+			logger.Fatal("failed to initialize TLS config", zap.Error(err))
 		}
-	}()
+
+		listener, err := tls.Listen("tcp", cfg.ServerAddr, tlsConfig)
+		if err != nil {
+			logger.Fatal("failed to start TLS listener", zap.Error(err))
+		}
+
+		logger.Info("HTTPS server started with self-signed certificate")
+
+		go func() {
+			if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+				logger.Error("server error", zap.Error(err))
+			}
+		}()
+	} else {
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("server starting failed", zap.Error(err))
+			}
+		}()
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -135,4 +164,68 @@ func main() {
 	}
 
 	logger.Info("Server stopped")
+}
+
+// newTLSConfig returns a tls.Config with a self-signed certificate.
+func newTLSConfig(addr string) (*tls.Config, error) {
+	cert, err := newSelfSignedCertificate(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
+// newSelfSignedCertificate generates a self-signed TLS certificate for the given address.
+func newSelfSignedCertificate(addr string) (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName: host,
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:  x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+		},
+		BasicConstraintsValid: true,
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		template.IPAddresses = []net.IP{ip}
+	} else {
+		template.DNSNames = []string{host}
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+
+	return tls.X509KeyPair(certPEM, keyPEM)
 }

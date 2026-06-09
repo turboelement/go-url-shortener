@@ -7,6 +7,7 @@ import (
 	"go-url-shortener/internal/profiler"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	AuditFilePath   string
 	AuditURL        string
 	EnablePprof     bool
+	EnableHTTPS     bool
 }
 
 const (
@@ -33,6 +35,7 @@ const (
 	envAuditFile       = "AUDIT_FILE"
 	envAuditURL        = "AUDIT_URL"
 	envEnablePprof     = "ENABLE_PPROF"
+	envEnableHTTPS     = "ENABLE_HTTPS"
 
 	defaultServerAddr      = ":8080"
 	defaultBaseURL         = "http://localhost:8080"
@@ -57,10 +60,11 @@ func New() *Config {
 	flag.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "short URL base address (http://localhost:8080)")
 	flag.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "URL (JSON) storage file path")
 	flag.StringVar(&cfg.DatabaseDSN, "d", cfg.DatabaseDSN, "PostgreSQL (DATABASE_DSN)")
-	flag.StringVar(&cfg.CookieSecret, "s", cfg.CookieSecret, "Secret key for cookie signing")
+	flag.StringVar(&cfg.CookieSecret, "secret-key", cfg.CookieSecret, "Secret key for cookie signing")
 	flag.StringVar(&cfg.AuditFilePath, "audit-file", cfg.AuditFilePath, "Audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Audit URL address")
 	flag.BoolVar(&cfg.EnablePprof, "enable-pprof", false, "Enable debug/pprof on URL address "+profiler.DefaultAddr)
+	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "Enable HTTPS server (self-signed certificate)")
 	flag.Parse()
 
 	// parsing env
@@ -93,6 +97,14 @@ func New() *Config {
 			cfg.EnablePprof = enabled
 		}
 	}
+	if val, ok := os.LookupEnv(envEnableHTTPS); ok {
+		enabled, err := strconv.ParseBool(val)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid ENABLE_HTTPS value, using default (false)")
+		} else {
+			cfg.EnableHTTPS = enabled
+		}
+	}
 
 	if cfg.ServerAddr == "" {
 		fmt.Fprintln(os.Stderr, "Server address can not be empty, using default :8080")
@@ -101,7 +113,16 @@ func New() *Config {
 
 	// if BaseURL (flag -b or env BASE_URL) empty
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = "http://" + cfg.ServerAddr
+		scheme := "http"
+		if cfg.EnableHTTPS {
+			scheme = "https"
+		}
+		cfg.BaseURL = scheme + "://" + cfg.ServerAddr
+	}
+
+	// switch to https scheme if HTTPS is enabled and BaseURL is default
+	if cfg.EnableHTTPS && strings.HasPrefix(cfg.BaseURL, "http://") && cfg.BaseURL == defaultBaseURL {
+		cfg.BaseURL = "https://" + cfg.BaseURL[len("http://"):]
 	}
 
 	if cfg.CookieSecret == "" {
