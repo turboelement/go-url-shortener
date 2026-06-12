@@ -46,20 +46,23 @@ func main() {
 	fmt.Println(formatBuildInfo("Build date", buildDate))
 	fmt.Println(formatBuildInfo("Build commit", buildCommit))
 
-	cfg := config.New()
+	cfg, err := config.New()
+	if err != nil {
+		log.Fatalf("cannot load config: %v", err)
+	}
 
-	logger, err := zap.NewProduction() // or zap.NewDevelopment()
+	logger, err := zap.NewProduction()
 	if err != nil {
 		log.Fatalf("cannot initialize zap logger: %v", err)
 	}
 	defer logger.Sync()
 
 	logger.Info("Server configuration loaded",
-		zap.String("ServerAddr", cfg.ServerAddr),
-		zap.String("BaseURL", cfg.BaseURL),
+		zap.String("ServerAddr", cfg.Server.Address),
+		zap.String("BaseURL", cfg.Server.BaseURL),
 	)
 
-	if cfg.EnablePprof {
+	if cfg.Profiling.EnablePprof {
 		p := profiler.New()
 		p.Start()
 		defer p.Close()
@@ -68,19 +71,19 @@ func main() {
 
 	var repo repository.URLRepositoryInterface
 
-	if cfg.DatabaseDSN != "" {
+	if cfg.Storage.DatabaseDSN != "" {
 		logger.Info("Using Database")
-		dbRepo, err := repository.NewPostgresRepository(cfg.DatabaseDSN)
+		dbRepo, err := repository.NewPostgresRepository(cfg.Storage.DatabaseDSN)
 		if err != nil {
 			logger.Fatal("Error connecting to DB", zap.Error(err))
 		}
 		defer dbRepo.Close()
 		repo = dbRepo
-	} else if cfg.FileStoragePath != "" {
+	} else if cfg.Storage.FileStoragePath != "" {
 		logger.Info("Using file storage",
-			zap.String("file_path", cfg.FileStoragePath),
+			zap.String("file_path", cfg.Storage.FileStoragePath),
 		)
-		repo = repository.NewFileURLRepository(cfg.FileStoragePath)
+		repo = repository.NewFileURLRepository(cfg.Storage.FileStoragePath)
 	} else {
 		logger.Info("Using in-memory storage")
 		repo = repository.NewURLRepository()
@@ -90,23 +93,23 @@ func main() {
 	defer svc.Close()
 
 	auditSubject := audit.NewSubject()
-	if cfg.AuditFilePath != "" {
-		fo, err := audit.NewFileObserver(cfg.AuditFilePath)
+	if cfg.Audit.FilePath != "" {
+		fo, err := audit.NewFileObserver(cfg.Audit.FilePath)
 		if err != nil {
 			logger.Fatal("failed to create file audit observer", zap.Error(err))
 		}
 		auditSubject.Register(fo)
-		logger.Info("Using file audit", zap.String("file_path", cfg.AuditFilePath))
+		logger.Info("Using file audit", zap.String("file_path", cfg.Audit.FilePath))
 	}
-	if cfg.AuditURL != "" {
-		auditSubject.Register(audit.NewHTTPObserver(cfg.AuditURL))
-		logger.Info("Using HTTP audit", zap.String("url", cfg.AuditURL))
+	if cfg.Audit.URL != "" {
+		auditSubject.Register(audit.NewHTTPObserver(cfg.Audit.URL))
+		logger.Info("Using HTTP audit", zap.String("url", cfg.Audit.URL))
 	}
 	defer auditSubject.Close()
 
 	router := server.NewRouter(server.RouterDeps{
-		BaseURL:      cfg.BaseURL,
-		CookieSecret: cfg.CookieSecret,
+		BaseURL:      cfg.Server.BaseURL,
+		CookieSecret: cfg.Security.CookieSecret,
 		Logger:       logger,
 		Repo:         repo,
 		Svc:          svc,
@@ -114,24 +117,24 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:         cfg.ServerAddr,
+		Addr:         cfg.Server.Address,
 		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
 	logger.Info("Server running at",
-		zap.String("address", cfg.BaseURL),
-		zap.Bool("https", cfg.EnableHTTPS),
+		zap.String("address", cfg.Server.BaseURL),
+		zap.Bool("https", cfg.Server.EnableHTTPS),
 	)
 
-	if cfg.EnableHTTPS {
-		tlsConfig, err := newTLSConfig(cfg.ServerAddr)
+	if cfg.Server.EnableHTTPS {
+		tlsConfig, err := newTLSConfig(cfg.Server.Address)
 		if err != nil {
 			logger.Fatal("failed to initialize TLS config", zap.Error(err))
 		}
 
-		listener, err := tls.Listen("tcp", cfg.ServerAddr, tlsConfig)
+		listener, err := tls.Listen("tcp", cfg.Server.Address, tlsConfig)
 		if err != nil {
 			logger.Fatal("failed to start TLS listener", zap.Error(err))
 		}

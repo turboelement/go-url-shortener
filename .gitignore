@@ -26,3 +26,7 @@ vendor/
 urls.txt
 cookies.txt
 audit.txt
+
+# Local config files
+dev/config.json
+config.json
