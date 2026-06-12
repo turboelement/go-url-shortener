@@ -31,6 +31,12 @@ git fetch template && git checkout template/v2 .github
 
 Подробнее про локальный и автоматический запуск читайте в [README автотестов](https://github.com/Yandex-Practicum/go-autotests).
 
+## Сборка
+
+```powershell
+go build -ldflags ('-X main.buildVersion=1.0.0 -X main.buildCommit=dev -X main.buildDate=' + (Get-Date -Format 'yyyy/MM/dd_HH:mm:ss')) -o shortener.exe .\cmd\shortener\
+```
+
 ## Структура проекта
 
 Приведённая в этом репозитории структура проекта является рекомендуемой, но не обязательной.
