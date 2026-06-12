@@ -90,7 +90,6 @@ func main() {
 	}
 
 	svc := service.NewShortenerService(repo)
-	defer svc.Close()
 
 	auditSubject := audit.NewSubject()
 	if cfg.Audit.FilePath != "" {
@@ -105,7 +104,6 @@ func main() {
 		auditSubject.Register(audit.NewHTTPObserver(cfg.Audit.URL))
 		logger.Info("Using HTTP audit", zap.String("url", cfg.Audit.URL))
 	}
-	defer auditSubject.Close()
 
 	router := server.NewRouter(server.RouterDeps{
 		BaseURL:      cfg.Server.BaseURL,
@@ -155,16 +153,24 @@ func main() {
 	}
 
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	<-stop
-	logger.Info("Server shutting down...")
+	logger.Info("Shutting down server gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("server shutdown failed", zap.Error(err))
 	}
+
+	auditSubject.Flush()
+
+	if err := svc.Close(); err != nil {
+		logger.Error("Service close error", zap.Error(err))
+	}
+
+	auditSubject.Close()
 
 	logger.Info("Server stopped")
 }
