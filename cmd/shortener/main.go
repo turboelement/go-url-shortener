@@ -2,16 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"fmt"
 	"log"
-	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,6 +17,7 @@ import (
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
 	"go-url-shortener/internal/service"
+	"go-url-shortener/internal/tlsconfig"
 
 	"go.uber.org/zap"
 )
@@ -127,7 +121,7 @@ func main() {
 	)
 
 	if cfg.Server.EnableHTTPS {
-		tlsConfig, err := newTLSConfig(cfg.Server.Address)
+		tlsConfig, err := tlsconfig.NewServerConfig(cfg.Server.Address)
 		if err != nil {
 			logger.Fatal("failed to initialize TLS config", zap.Error(err))
 		}
@@ -158,83 +152,46 @@ func main() {
 	logger.Info("Shutting down server gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("server shutdown failed", zap.Error(err))
 	}
+	cancel()
 
-	auditSubject.Flush()
-
-	if err := svc.Close(); err != nil {
-		logger.Error("Service close error", zap.Error(err))
+	flushDone := make(chan struct{})
+	go func() {
+		auditSubject.Flush()
+		close(flushDone)
+	}()
+	select {
+	case <-flushDone:
+	case <-time.After(5 * time.Second):
+		logger.Warn("audit flush timed out, proceeding")
 	}
 
-	auditSubject.Close()
+	svcDone := make(chan struct{})
+	go func() {
+		if err := svc.Close(); err != nil {
+			logger.Error("Service close error", zap.Error(err))
+		}
+		close(svcDone)
+	}()
+	select {
+	case <-svcDone:
+	case <-time.After(5 * time.Second):
+		logger.Warn("service close timed out, proceeding")
+	}
+
+	auditDone := make(chan struct{})
+	go func() {
+		auditSubject.Close()
+		close(auditDone)
+	}()
+	select {
+	case <-auditDone:
+	case <-time.After(5 * time.Second):
+		logger.Warn("audit close timed out, proceeding")
+	}
 
 	logger.Info("Server stopped")
-}
-
-// newTLSConfig returns a tls.Config with a self-signed certificate.
-func newTLSConfig(addr string) (*tls.Config, error) {
-	cert, err := newSelfSignedCertificate(addr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}, nil
-}
-
-// newSelfSignedCertificate generates a self-signed TLS certificate for the given address.
-func newSelfSignedCertificate(addr string) (tls.Certificate, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		host = "localhost"
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			CommonName: host,
-		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:  x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-		},
-		BasicConstraintsValid: true,
-	}
-
-	if ip := net.ParseIP(host); ip != nil {
-		template.IPAddresses = []net.IP{ip}
-	} else {
-		template.DNSNames = []string{host}
-	}
-
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-
-	return tls.X509KeyPair(certPEM, keyPEM)
 }

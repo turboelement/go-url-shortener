@@ -278,8 +278,8 @@ func (cfg *Config) postProcess() {
 		cfg.Server.BaseURL = scheme + "://" + cfg.Server.Address
 	}
 
-	// Switch to https scheme when HTTPS is enabled and BaseURL is default.
-	if cfg.Server.EnableHTTPS && strings.HasPrefix(cfg.Server.BaseURL, "http://") && cfg.Server.BaseURL == defaultBaseURL {
+	// Switch to https scheme when HTTPS is enabled.
+	if cfg.Server.EnableHTTPS && strings.HasPrefix(cfg.Server.BaseURL, "http://") {
 		cfg.Server.BaseURL = "https://" + cfg.Server.BaseURL[len("http://"):]
 	}
 
