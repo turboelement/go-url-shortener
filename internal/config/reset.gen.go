@@ -6,12 +6,19 @@ func (c *Config) Reset() {
 	if c == nil {
 		return
 	}
-	c.ServerAddr = ""
-	c.BaseURL = ""
-	c.FileStoragePath = ""
-	c.DatabaseDSN = ""
-	c.CookieSecret = ""
-	c.AuditFilePath = ""
-	c.AuditURL = ""
-	c.EnablePprof = false
+	if resetter, ok := interface{}(&c.Server).(interface{ Reset() }); ok {
+		resetter.Reset()
+	}
+	if resetter, ok := interface{}(&c.Storage).(interface{ Reset() }); ok {
+		resetter.Reset()
+	}
+	if resetter, ok := interface{}(&c.Security).(interface{ Reset() }); ok {
+		resetter.Reset()
+	}
+	if resetter, ok := interface{}(&c.Audit).(interface{ Reset() }); ok {
+		resetter.Reset()
+	}
+	if resetter, ok := interface{}(&c.Profiling).(interface{ Reset() }); ok {
+		resetter.Reset()
+	}
 }

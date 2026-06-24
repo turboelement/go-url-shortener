@@ -34,6 +34,10 @@ type fieldInfo struct {
 	IsPtrStruct bool
 }
 
+func (f fieldInfo) IsPrimitive() bool { return f.Kind == kindPrimitive }
+func (f fieldInfo) IsString() bool    { return f.Kind == kindString }
+func (f fieldInfo) IsBool() bool      { return f.Kind == kindBool }
+
 const generateResetDirective = "generate:reset"
 
 type fieldKind int
@@ -418,15 +422,15 @@ func ({{ $r }} *{{ .StructName }}) Reset() {
 	if {{ $r }}.{{ .Name }} != nil {
 		clear({{ $r }}.{{ .Name }})
 	}
-{{- else if eq .Kind 0 }}
+{{- else if .IsPrimitive }}
 	if {{ $r }}.{{ .Name }} != nil {
 		*{{ $r }}.{{ .Name }} = 0
 	}
-{{- else if eq .Kind 1 }}
+{{- else if .IsString }}
 	if {{ $r }}.{{ .Name }} != nil {
 		*{{ $r }}.{{ .Name }} = ""
 	}
-{{- else if eq .Kind 2 }}
+{{- else if .IsBool }}
 	if {{ $r }}.{{ .Name }} != nil {
 		*{{ $r }}.{{ .Name }} = false
 	}
@@ -439,11 +443,11 @@ func ({{ $r }} *{{ .StructName }}) Reset() {
 	{{ $r }}.{{ .Name }} = {{ $r }}.{{ .Name }}[:0]
 {{- else if .IsMap }}
 	clear({{ $r }}.{{ .Name }})
-{{- else if eq .Kind 0 }}
+{{- else if .IsPrimitive }}
 	{{ $r }}.{{ .Name }} = 0
-{{- else if eq .Kind 1 }}
+{{- else if .IsString }}
 	{{ $r }}.{{ .Name }} = ""
-{{- else if eq .Kind 2 }}
+{{- else if .IsBool }}
 	{{ $r }}.{{ .Name }} = false
 {{- end }}
 {{- end }}
