@@ -29,9 +29,10 @@ type Config struct {
 
 // ServerConfig stores network settings for the HTTP server.
 type ServerConfig struct {
-	Address     string
-	BaseURL     string
-	EnableHTTPS bool
+	Address       string
+	BaseURL       string
+	EnableHTTPS   bool
+	TrustedSubnet string
 }
 
 // StorageConfig stores storage backend settings.
@@ -66,6 +67,7 @@ const (
 	envAuditURL        = "AUDIT_URL"
 	envEnablePprof     = "ENABLE_PPROF"
 	envEnableHTTPS     = "ENABLE_HTTPS"
+	envTrustedSubnet   = "TRUSTED_SUBNET"
 	envConfig          = "CONFIG"
 
 	defaultServerAddr      = ":8080"
@@ -83,6 +85,7 @@ var (
 	flagAuditURL        = flag.String("audit-url", "", "Audit URL address")
 	flagEnablePprof     = flag.Bool("enable-pprof", false, "Enable debug/pprof on URL address "+profiler.DefaultAddr)
 	flagEnableHTTPS     = flag.Bool("s", false, "Enable HTTPS server (self-signed certificate)")
+	flagTrustedSubnet   = flag.String("t", "", "Trusted subnet CIDR")
 	flagConfigPath      = flag.String("c", "", "Path to JSON config file")
 	flagConfigPathLong  = flag.String("config", "", "Path to JSON config file")
 )
@@ -144,6 +147,7 @@ type jsonFile struct {
 	AuditFilePath   *string `json:"audit_file_path"`
 	AuditURL        *string `json:"audit_url"`
 	EnablePprof     *bool   `json:"enable_pprof"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
 }
 
 func (cfg *Config) applyConfigFile(path string) error {
@@ -177,6 +181,7 @@ func (cfg *Config) applyConfigFile(path string) error {
 	setStr(&cfg.Audit.FilePath, jf.AuditFilePath)
 	setStr(&cfg.Audit.URL, jf.AuditURL)
 	setBool(&cfg.Profiling.EnablePprof, jf.EnablePprof)
+	setStr(&cfg.Server.TrustedSubnet, jf.TrustedSubnet)
 
 	return nil
 }
@@ -220,6 +225,9 @@ func (cfg *Config) applyFlags(visitedFlags map[string]bool) {
 	if visitedFlags["s"] {
 		cfg.Server.EnableHTTPS = *flagEnableHTTPS
 	}
+	if visitedFlags["t"] {
+		cfg.Server.TrustedSubnet = *flagTrustedSubnet
+	}
 }
 
 func (cfg *Config) applyEnv() {
@@ -259,6 +267,9 @@ func (cfg *Config) applyEnv() {
 		} else {
 			cfg.Server.EnableHTTPS = enabled
 		}
+	}
+	if v, ok := os.LookupEnv(envTrustedSubnet); ok {
+		cfg.Server.TrustedSubnet = v
 	}
 }
 

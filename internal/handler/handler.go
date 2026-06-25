@@ -47,6 +47,12 @@ type UserURLItem struct {
 	OriginalURL string `json:"original_url"`
 }
 
+// StatsResponse contains service statistics (URLs and users counts).
+type StatsResponse struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
+}
+
 // PostHandler handles POST /. Reads a plain-text URL and returns a short URL.
 func PostHandler(svc *service.ShortenerService, baseURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -373,6 +379,35 @@ func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
 		svc.DeleteUserURLsAsync(userID, shortIDs)
 
 		w.WriteHeader(http.StatusAccepted)
+	}
+}
+
+// StatsHandler handles GET /api/internal/stats.
+// Returns service statistics if the client's IP is in the trusted subnet.
+func StatsHandler(svc *service.ShortenerService, trustedSubnet string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log := logger.FromContext(r.Context())
+
+		if !middleware.CheckTrustedSubnet(r, trustedSubnet) {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		urlsCount, usersCount, err := svc.GetStats(r.Context())
+		if err != nil {
+			log.Error("Failed to get stats", zap.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		resp := StatsResponse{
+			URLs:  urlsCount,
+			Users: usersCount,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 

@@ -47,6 +47,11 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 	return repo
 }
 
+// Stats returns the total number of URLs and unique users.
+func (r *FileURLRepository) Stats(ctx context.Context) (int, int, error) {
+	return r.URLRepository.Stats(ctx)
+}
+
 // Save stores a URL in memory and appends it to the file. Returns ErrURLAlreadyExists if duplicate.
 func (r *FileURLRepository) Save(ctx context.Context, shortID, originalURL string) (string, error) {
 	storedID, err := r.URLRepository.Save(ctx, shortID, originalURL)

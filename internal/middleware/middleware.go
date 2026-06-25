@@ -3,9 +3,36 @@ package middleware
 
 import (
 	"compress/gzip"
+	"net"
 	"net/http"
 	"strings"
 )
+
+// CheckTrustedSubnet checks whether the IP from the X-Real-IP header
+// belongs to the trusted subnet (CIDR).
+// When trustedSubnet is empty, access is always denied (returns false).
+func CheckTrustedSubnet(r *http.Request, trustedSubnet string) bool {
+	if trustedSubnet == "" {
+		return false
+	}
+
+	_, cidrNet, err := net.ParseCIDR(trustedSubnet)
+	if err != nil {
+		return false
+	}
+
+	realIP := r.Header.Get("X-Real-IP")
+	if realIP == "" {
+		return false
+	}
+
+	ip := net.ParseIP(realIP)
+	if ip == nil {
+		return false
+	}
+
+	return cidrNet.Contains(ip)
+}
 
 // Decompress is middleware that decompresses gzip-encoded request bodies.
 func Decompress(next http.Handler) http.Handler {

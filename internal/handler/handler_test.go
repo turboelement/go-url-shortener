@@ -35,8 +35,13 @@ func userIDMiddleware(userID string) func(http.Handler) http.Handler {
 	}
 }
 
-func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryInterface) {
+func setupTestServer(t *testing.T, opts ...string) (*httptest.Server, *mocks.MockURLRepositoryInterface) {
 	t.Helper()
+
+	trustedSubnet := ""
+	if len(opts) > 0 {
+		trustedSubnet = opts[0]
+	}
 
 	ctrl := gomock.NewController(t)
 	mockRepo := mocks.NewMockURLRepositoryInterface(ctrl)
@@ -54,6 +59,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *mocks.MockURLRepositoryIn
 	r.Get("/ping", PingHandler(mockRepo))
 	r.Get("/api/user/urls", GetUserURLsHandler(svc, testBaseURL))
 	r.Delete("/api/user/urls", DeleteUserURLsHandler(svc))
+	r.Get("/api/internal/stats", StatsHandler(svc, trustedSubnet))
 
 	//NewServeMux specific: ServeMux returns 405 Method Not Allowed for unknown routes
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -488,6 +494,110 @@ func TestGetUserURLsHandler(t *testing.T) {
 					assert.NotEmpty(t, item.OriginalURL)
 					assert.Equal(t, tt.urls[i].OriginalURL, item.OriginalURL)
 				}
+			}
+		})
+	}
+}
+
+func TestStatsHandler(t *testing.T) {
+	type want struct {
+		code  int
+		urls  int
+		users int
+	}
+
+	tests := []struct {
+		name          string
+		trustedSubnet string
+		realIP        string // X-Real-IP header value; empty means no header
+		setupMock     func(*mocks.MockURLRepositoryInterface)
+		want          want
+	}{
+		{
+			name:          "successful stats from trusted subnet",
+			trustedSubnet: "192.168.1.0/24",
+			realIP:        "192.168.1.100",
+			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface) {
+				mockRepo.EXPECT().Stats(gomock.Any()).Return(10, 3, nil).Times(1)
+			},
+			want: want{
+				code:  http.StatusOK,
+				urls:  10,
+				users: 3,
+			},
+		},
+		{
+			name:          "forbidden - IP outside trusted subnet",
+			trustedSubnet: "192.168.1.0/24",
+			realIP:        "10.0.0.1",
+			want: want{
+				code: http.StatusForbidden,
+			},
+		},
+		{
+			name:          "forbidden - no X-Real-IP header",
+			trustedSubnet: "192.168.1.0/24",
+			realIP:        "",
+			want: want{
+				code: http.StatusForbidden,
+			},
+		},
+		{
+			name:          "forbidden - empty trusted subnet (all requests denied)",
+			trustedSubnet: "",
+			realIP:        "192.168.1.100",
+			want: want{
+				code: http.StatusForbidden,
+			},
+		},
+		{
+			name:          "forbidden - invalid CIDR in config",
+			trustedSubnet: "invalid-cidr",
+			realIP:        "192.168.1.100",
+			want: want{
+				code: http.StatusForbidden,
+			},
+		},
+		{
+			name:          "internal server error from repo",
+			trustedSubnet: "192.168.1.0/24",
+			realIP:        "192.168.1.100",
+			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface) {
+				mockRepo.EXPECT().Stats(gomock.Any()).Return(0, 0, fmt.Errorf("db error")).Times(1)
+			},
+			want: want{
+				code: http.StatusInternalServerError,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts, mockRepo := setupTestServer(t, tt.trustedSubnet)
+			defer ts.Close()
+
+			if tt.setupMock != nil {
+				tt.setupMock(mockRepo)
+			}
+
+			client := resty.New()
+			client.SetBaseURL(ts.URL)
+
+			req := client.R()
+			if tt.realIP != "" {
+				req.SetHeader("X-Real-IP", tt.realIP)
+			}
+
+			resp, err := req.Get("/api/internal/stats")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want.code, resp.StatusCode())
+
+			if tt.want.code == http.StatusOK {
+				var result StatsResponse
+				err = json.Unmarshal(resp.Body(), &result)
+				require.NoError(t, err)
+				assert.Equal(t, tt.want.urls, result.URLs)
+				assert.Equal(t, tt.want.users, result.Users)
 			}
 		})
 	}

@@ -18,12 +18,13 @@ import (
 
 // RouterDeps contains all dependencies needed to create the router.
 type RouterDeps struct {
-	BaseURL      string
-	CookieSecret string
-	Logger       *zap.Logger
-	Repo         repository.URLRepositoryInterface
-	Svc          *service.ShortenerService
-	AuditSubject *audit.Subject
+	BaseURL       string
+	CookieSecret  string
+	Logger        *zap.Logger
+	Repo          repository.URLRepositoryInterface
+	Svc           *service.ShortenerService
+	AuditSubject  *audit.Subject
+	TrustedSubnet string
 }
 
 // NewRouter creates and configures the chi router with all routes and middleware.
@@ -45,6 +46,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/ping", handler.PingHandler(deps.Repo))
 	r.Get("/api/user/urls", handler.GetUserURLsHandler(deps.Svc, deps.BaseURL))
 	r.Delete("/api/user/urls", handler.DeleteUserURLsHandler(deps.Svc))
+	r.Get("/api/internal/stats", handler.StatsHandler(deps.Svc, deps.TrustedSubnet))
 
 	return r
 }

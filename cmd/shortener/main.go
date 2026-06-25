@@ -100,12 +100,13 @@ func main() {
 	}
 
 	router := server.NewRouter(server.RouterDeps{
-		BaseURL:      cfg.Server.BaseURL,
-		CookieSecret: cfg.Security.CookieSecret,
-		Logger:       logger,
-		Repo:         repo,
-		Svc:          svc,
-		AuditSubject: auditSubject,
+		BaseURL:       cfg.Server.BaseURL,
+		CookieSecret:  cfg.Security.CookieSecret,
+		Logger:        logger,
+		Repo:          repo,
+		Svc:           svc,
+		AuditSubject:  auditSubject,
+		TrustedSubnet: cfg.Server.TrustedSubnet,
 	})
 
 	srv := &http.Server{

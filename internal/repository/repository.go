@@ -17,6 +17,7 @@ type URLRepositoryInterface interface {
 	SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error)
 	GetUserURLs(ctx context.Context, userID string) ([]UserURL, error)
 	DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error
+	Stats(ctx context.Context) (int, int, error)
 }
 
 // BatchEntry is a single item to store in a batch save operation.

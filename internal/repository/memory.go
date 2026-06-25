@@ -139,6 +139,14 @@ func (r *URLRepository) BatchSave(ctx context.Context, userID string, items []Ba
 	return nil
 }
 
+// Stats returns the total number of URLs and unique users.
+func (r *URLRepository) Stats(ctx context.Context) (int, int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return len(r.store), len(r.userIndex), nil
+}
+
 // DeleteUserURLs soft-deletes the specified URLs owned by the user.
 func (r *URLRepository) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error {
 	r.mu.Lock()
