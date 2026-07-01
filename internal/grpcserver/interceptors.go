@@ -5,7 +5,9 @@ import (
 	"context"
 
 	"go-url-shortener/internal/auth"
+	"go-url-shortener/internal/logger"
 
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -51,9 +53,11 @@ func AuthInterceptor(cookieSecret string) grpc.UnaryServerInterceptor {
 
 			// Sign a token and send it back in a response header
 			signedToken, err := auth.SignUserID(userID, cookieSecret)
-			if err == nil {
-				_ = grpc.SetHeader(ctx, metadata.Pairs(userIDKey, signedToken))
+			if err != nil {
+				logger.FromContext(ctx).Error("failed to sign token", zap.Error(err))
+				return nil, status.Error(codes.Internal, "internal server error")
 			}
+			_ = grpc.SetHeader(ctx, metadata.Pairs(userIDKey, signedToken))
 		} else {
 			// Token present — try to verify
 			uid, ok := auth.VerifyUserID(token, cookieSecret)
@@ -69,7 +73,7 @@ func AuthInterceptor(cookieSecret string) grpc.UnaryServerInterceptor {
 	}
 }
 
-// GetUserIDFromGRPCContext extracts the user ID from a gRPC context.
-func GetUserIDFromGRPCContext(ctx context.Context) (string, error) {
+// getUserIDFromGRPCContext extracts the user ID from a gRPC context.
+func getUserIDFromGRPCContext(ctx context.Context) (string, error) {
 	return auth.GetUserIDFromContext(ctx)
 }

@@ -16,6 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"go-url-shortener/internal/auth"
+	"go-url-shortener/internal/middleware"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/repository/mocks"
 	"go-url-shortener/internal/service"
@@ -59,7 +60,10 @@ func setupTestServer(t *testing.T, opts ...string) (*httptest.Server, *mocks.Moc
 	r.Get("/ping", PingHandler(mockRepo))
 	r.Get("/api/user/urls", GetUserURLsHandler(svc, testBaseURL))
 	r.Delete("/api/user/urls", DeleteUserURLsHandler(svc))
-	r.Get("/api/internal/stats", StatsHandler(svc, trustedSubnet))
+	if trustedSubnet != "" {
+		r.With(middleware.TrustedSubnetMiddleware(trustedSubnet)).
+			Get("/api/internal/stats", StatsHandler(svc))
+	}
 
 	//NewServeMux specific: ServeMux returns 405 Method Not Allowed for unknown routes
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -518,7 +522,7 @@ func TestStatsHandler(t *testing.T) {
 			trustedSubnet: "192.168.1.0/24",
 			realIP:        "192.168.1.100",
 			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface) {
-				mockRepo.EXPECT().Stats(gomock.Any()).Return(10, 3, nil).Times(1)
+				mockRepo.EXPECT().Stats(gomock.Any()).Return(repository.StatsResult{URLs: 10, Users: 3}, nil).Times(1)
 			},
 			want: want{
 				code:  http.StatusOK,
@@ -543,14 +547,6 @@ func TestStatsHandler(t *testing.T) {
 			},
 		},
 		{
-			name:          "forbidden - empty trusted subnet (all requests denied)",
-			trustedSubnet: "",
-			realIP:        "192.168.1.100",
-			want: want{
-				code: http.StatusForbidden,
-			},
-		},
-		{
 			name:          "forbidden - invalid CIDR in config",
 			trustedSubnet: "invalid-cidr",
 			realIP:        "192.168.1.100",
@@ -563,7 +559,7 @@ func TestStatsHandler(t *testing.T) {
 			trustedSubnet: "192.168.1.0/24",
 			realIP:        "192.168.1.100",
 			setupMock: func(mockRepo *mocks.MockURLRepositoryInterface) {
-				mockRepo.EXPECT().Stats(gomock.Any()).Return(0, 0, fmt.Errorf("db error")).Times(1)
+				mockRepo.EXPECT().Stats(gomock.Any()).Return(repository.StatsResult{}, fmt.Errorf("db error")).Times(1)
 			},
 			want: want{
 				code: http.StatusInternalServerError,

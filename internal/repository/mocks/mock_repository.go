@@ -144,13 +144,12 @@ func (mr *MockURLRepositoryInterfaceMockRecorder) SaveWithUser(ctx, shortID, ori
 }
 
 // Stats mocks base method.
-func (m *MockURLRepositoryInterface) Stats(ctx context.Context) (int, int, error) {
+func (m *MockURLRepositoryInterface) Stats(ctx context.Context) (repository.StatsResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stats", ctx)
-	ret0, _ := ret[0].(int)
-	ret1, _ := ret[1].(int)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(repository.StatsResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Stats indicates an expected call of Stats.

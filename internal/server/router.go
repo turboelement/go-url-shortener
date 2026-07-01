@@ -46,7 +46,10 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/ping", handler.PingHandler(deps.Repo))
 	r.Get("/api/user/urls", handler.GetUserURLsHandler(deps.Svc, deps.BaseURL))
 	r.Delete("/api/user/urls", handler.DeleteUserURLsHandler(deps.Svc))
-	r.Get("/api/internal/stats", handler.StatsHandler(deps.Svc, deps.TrustedSubnet))
+	if deps.TrustedSubnet != "" {
+		r.With(middleware.TrustedSubnetMiddleware(deps.TrustedSubnet)).
+			Get("/api/internal/stats", handler.StatsHandler(deps.Svc))
+	}
 
 	return r
 }

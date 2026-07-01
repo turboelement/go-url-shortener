@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // grpcTestFixture holds shared test dependencies.
@@ -81,7 +80,7 @@ func (f *grpcTestFixture) shortenAndGetToken(t testing.TB, url string) (shortID,
 	var header metadata.MD
 	resp, err := f.client.ShortenURL(
 		context.Background(),
-		&shortenerpb.URLShortenRequest{Url: url},
+		(&shortenerpb.URLShortenRequest_builder{Url: url}).Build(),
 		grpc.Header(&header),
 	)
 	if err != nil {
@@ -107,9 +106,10 @@ func TestShortenURL(t *testing.T) {
 	defer f.close()
 
 	tests := []struct {
-		name    string
-		url     string
-		wantErr string // substring of expected error; empty means success
+		name          string
+		url           string
+		wantErr       string // substring of expected error; empty means success
+		wantDuplicate bool
 	}{
 		{
 			name: "valid URL",
@@ -126,28 +126,29 @@ func TestShortenURL(t *testing.T) {
 	var dupHeader metadata.MD
 	_, err := f.client.ShortenURL(
 		context.Background(),
-		&shortenerpb.URLShortenRequest{Url: "https://example.com/dup"},
+		(&shortenerpb.URLShortenRequest_builder{Url: "https://example.com/dup"}).Build(),
 		grpc.Header(&dupHeader),
 	)
 	if err != nil {
 		t.Fatalf("failed to create duplicate test URL: %v", err)
 	}
 	tests = append(tests, struct {
-		name    string
-		url     string
-		wantErr string
+		name          string
+		url           string
+		wantErr       string
+		wantDuplicate bool
 	}{
-		name:    "duplicate URL",
-		url:     "https://example.com/dup",
-		wantErr: "AlreadyExists",
+		name:          "duplicate URL",
+		url:           "https://example.com/dup",
+		wantDuplicate: true,
 	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var header metadata.MD
-			_, err := f.client.ShortenURL(
+			resp, err := f.client.ShortenURL(
 				context.Background(),
-				&shortenerpb.URLShortenRequest{Url: tt.url},
+				(&shortenerpb.URLShortenRequest_builder{Url: tt.url}).Build(),
 				grpc.Header(&header),
 			)
 
@@ -163,6 +164,17 @@ func TestShortenURL(t *testing.T) {
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Verify duplicate flag
+			if tt.wantDuplicate {
+				if !resp.GetAlreadyExists() {
+					t.Fatal("expected AlreadyExists flag to be true for duplicate URL")
+				}
+				if resp.GetResult() == "" {
+					t.Fatal("expected non-empty short URL even for duplicate")
+				}
+				return
 			}
 
 			// Verify auth header is set for new users
@@ -224,7 +236,7 @@ func TestExpandURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := authedContext(tt.token)
-			resp, err := f.client.ExpandURL(ctx, &shortenerpb.URLExpandRequest{Id: tt.shortID})
+			resp, err := f.client.ExpandURL(ctx, (&shortenerpb.URLExpandRequest_builder{Id: tt.shortID}).Build())
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -255,7 +267,7 @@ func TestListUserURLs(t *testing.T) {
 	var user1Header metadata.MD
 	_, err := f.client.ShortenURL(
 		context.Background(),
-		&shortenerpb.URLShortenRequest{Url: "https://example.com/user1-1"},
+		(&shortenerpb.URLShortenRequest_builder{Url: "https://example.com/user1-1"}).Build(),
 		grpc.Header(&user1Header),
 	)
 	if err != nil {
@@ -266,7 +278,7 @@ func TestListUserURLs(t *testing.T) {
 	// Second URL for same user (reuse token)
 	_, err = f.client.ShortenURL(
 		authedContext(tokenUser1),
-		&shortenerpb.URLShortenRequest{Url: "https://example.com/user1-2"},
+		(&shortenerpb.URLShortenRequest_builder{Url: "https://example.com/user1-2"}).Build(),
 	)
 	if err != nil {
 		t.Fatalf("failed to create user1-2: %v", err)
@@ -276,7 +288,7 @@ func TestListUserURLs(t *testing.T) {
 	var user2Header metadata.MD
 	_, err = f.client.ShortenURL(
 		context.Background(),
-		&shortenerpb.URLShortenRequest{Url: "https://example.com/user2-1"},
+		(&shortenerpb.URLShortenRequest_builder{Url: "https://example.com/user2-1"}).Build(),
 		grpc.Header(&user2Header),
 	)
 	if err != nil {
@@ -315,7 +327,7 @@ func TestListUserURLs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := authedContext(tt.token)
-			resp, err := f.client.ListUserURLs(ctx, &emptypb.Empty{})
+			resp, err := f.client.ListUserURLs(ctx, &shortenerpb.ListUserURLsRequest{})
 
 			if tt.wantErr != "" {
 				if err == nil {

@@ -48,7 +48,7 @@ func NewFileURLRepository(filePath string) *FileURLRepository {
 }
 
 // Stats returns the total number of URLs and unique users.
-func (r *FileURLRepository) Stats(ctx context.Context) (int, int, error) {
+func (r *FileURLRepository) Stats(ctx context.Context) (StatsResult, error) {
 	return r.URLRepository.Stats(ctx)
 }
 

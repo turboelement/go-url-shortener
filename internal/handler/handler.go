@@ -383,17 +383,12 @@ func DeleteUserURLsHandler(svc *service.ShortenerService) http.HandlerFunc {
 }
 
 // StatsHandler handles GET /api/internal/stats.
-// Returns service statistics if the client's IP is in the trusted subnet.
-func StatsHandler(svc *service.ShortenerService, trustedSubnet string) http.HandlerFunc {
+// Returns service statistics (requires TrustedSubnetMiddleware).
+func StatsHandler(svc *service.ShortenerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.FromContext(r.Context())
 
-		if !middleware.CheckTrustedSubnet(r, trustedSubnet) {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-
-		urlsCount, usersCount, err := svc.GetStats(r.Context())
+		stats, err := svc.GetStats(r.Context())
 		if err != nil {
 			log.Error("Failed to get stats", zap.Error(err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -401,8 +396,8 @@ func StatsHandler(svc *service.ShortenerService, trustedSubnet string) http.Hand
 		}
 
 		resp := StatsResponse{
-			URLs:  urlsCount,
-			Users: usersCount,
+			URLs:  stats.URLs,
+			Users: stats.Users,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

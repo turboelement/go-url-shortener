@@ -177,19 +177,19 @@ func (r *PostgresRepository) BatchSave(ctx context.Context, userID string, items
 }
 
 // Stats returns the total number of URLs and unique users (excluding deleted records).
-func (r *PostgresRepository) Stats(ctx context.Context) (int, int, error) {
-	var urlsCount, usersCount int
+func (r *PostgresRepository) Stats(ctx context.Context) (StatsResult, error) {
+	var result StatsResult
 	err := r.db.QueryRow(ctx, `
 		SELECT
 			COUNT(*) AS urls_count,
 			COUNT(DISTINCT user_id) AS users_count
 		FROM urls
 		WHERE is_deleted = false
-	`).Scan(&urlsCount, &usersCount)
+	`).Scan(&result.URLs, &result.Users)
 	if err != nil {
-		return 0, 0, fmt.Errorf("error getting stats: %w", err)
+		return StatsResult{}, fmt.Errorf("error getting stats: %w", err)
 	}
-	return urlsCount, usersCount, nil
+	return result, nil
 }
 
 // DeleteUserURLs soft-deletes the specified URLs owned by the user.

@@ -8,30 +8,43 @@ import (
 	"strings"
 )
 
-// CheckTrustedSubnet checks whether the IP from the X-Real-IP header
-// belongs to the trusted subnet (CIDR).
-// When trustedSubnet is empty, access is always denied (returns false).
-func CheckTrustedSubnet(r *http.Request, trustedSubnet string) bool {
-	if trustedSubnet == "" {
-		return false
-	}
+// TrustedSubnetMiddleware checks whether the IP from the X-Real-IP header
+// belongs to the trusted subnet (CIDR). If not, returns 403 Forbidden.
+// Set trustedSubnet to empty string to always deny access.
+func TrustedSubnetMiddleware(trustedSubnet string) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if trustedSubnet == "" {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
 
-	_, cidrNet, err := net.ParseCIDR(trustedSubnet)
-	if err != nil {
-		return false
-	}
+			_, cidrNet, err := net.ParseCIDR(trustedSubnet)
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
 
-	realIP := r.Header.Get("X-Real-IP")
-	if realIP == "" {
-		return false
-	}
+			realIP := r.Header.Get("X-Real-IP")
+			if realIP == "" {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
 
-	ip := net.ParseIP(realIP)
-	if ip == nil {
-		return false
-	}
+			ip := net.ParseIP(realIP)
+			if ip == nil {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
 
-	return cidrNet.Contains(ip)
+			if !cidrNet.Contains(ip) {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // Decompress is middleware that decompresses gzip-encoded request bodies.
