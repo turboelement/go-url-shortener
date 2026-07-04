@@ -27,11 +27,13 @@ type Config struct {
 	Profiling ProfilingConfig
 }
 
-// ServerConfig stores network settings for the HTTP server.
+// ServerConfig stores network settings for the HTTP and gRPC servers.
 type ServerConfig struct {
-	Address     string
-	BaseURL     string
-	EnableHTTPS bool
+	Address       string
+	BaseURL       string
+	EnableHTTPS   bool
+	TrustedSubnet string
+	GRPCAddress   string
 }
 
 // StorageConfig stores storage backend settings.
@@ -66,9 +68,12 @@ const (
 	envAuditURL        = "AUDIT_URL"
 	envEnablePprof     = "ENABLE_PPROF"
 	envEnableHTTPS     = "ENABLE_HTTPS"
+	envTrustedSubnet   = "TRUSTED_SUBNET"
+	envGRPCAddress     = "GRPC_ADDRESS"
 	envConfig          = "CONFIG"
 
 	defaultServerAddr      = ":8080"
+	defaultGRPCAddr        = ":3200"
 	defaultBaseURL         = "http://localhost:8080"
 	defaultFileStoragePath = "./urls.txt"
 )
@@ -83,6 +88,8 @@ var (
 	flagAuditURL        = flag.String("audit-url", "", "Audit URL address")
 	flagEnablePprof     = flag.Bool("enable-pprof", false, "Enable debug/pprof on URL address "+profiler.DefaultAddr)
 	flagEnableHTTPS     = flag.Bool("s", false, "Enable HTTPS server (self-signed certificate)")
+	flagTrustedSubnet   = flag.String("t", "", "Trusted subnet CIDR")
+	flagGRPCAddress     = flag.String("g", defaultGRPCAddr, "gRPC-server address (:3200 or localhost:3200)")
 	flagConfigPath      = flag.String("c", "", "Path to JSON config file")
 	flagConfigPathLong  = flag.String("config", "", "Path to JSON config file")
 )
@@ -125,8 +132,9 @@ func New() (*Config, error) {
 func defaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Address: defaultServerAddr,
-			BaseURL: defaultBaseURL,
+			Address:     defaultServerAddr,
+			BaseURL:     defaultBaseURL,
+			GRPCAddress: defaultGRPCAddr,
 		},
 		Storage: StorageConfig{
 			FileStoragePath: defaultFileStoragePath,
@@ -144,6 +152,8 @@ type jsonFile struct {
 	AuditFilePath   *string `json:"audit_file_path"`
 	AuditURL        *string `json:"audit_url"`
 	EnablePprof     *bool   `json:"enable_pprof"`
+	TrustedSubnet   *string `json:"trusted_subnet"`
+	GRPCAddress     *string `json:"grpc_address"`
 }
 
 func (cfg *Config) applyConfigFile(path string) error {
@@ -177,6 +187,8 @@ func (cfg *Config) applyConfigFile(path string) error {
 	setStr(&cfg.Audit.FilePath, jf.AuditFilePath)
 	setStr(&cfg.Audit.URL, jf.AuditURL)
 	setBool(&cfg.Profiling.EnablePprof, jf.EnablePprof)
+	setStr(&cfg.Server.TrustedSubnet, jf.TrustedSubnet)
+	setStr(&cfg.Server.GRPCAddress, jf.GRPCAddress)
 
 	return nil
 }
@@ -220,6 +232,12 @@ func (cfg *Config) applyFlags(visitedFlags map[string]bool) {
 	if visitedFlags["s"] {
 		cfg.Server.EnableHTTPS = *flagEnableHTTPS
 	}
+	if visitedFlags["t"] {
+		cfg.Server.TrustedSubnet = *flagTrustedSubnet
+	}
+	if visitedFlags["g"] {
+		cfg.Server.GRPCAddress = *flagGRPCAddress
+	}
 }
 
 func (cfg *Config) applyEnv() {
@@ -259,6 +277,12 @@ func (cfg *Config) applyEnv() {
 		} else {
 			cfg.Server.EnableHTTPS = enabled
 		}
+	}
+	if v, ok := os.LookupEnv(envTrustedSubnet); ok {
+		cfg.Server.TrustedSubnet = v
+	}
+	if v, ok := os.LookupEnv(envGRPCAddress); ok {
+		cfg.Server.GRPCAddress = v
 	}
 }
 

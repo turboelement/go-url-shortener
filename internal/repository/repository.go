@@ -17,6 +17,7 @@ type URLRepositoryInterface interface {
 	SaveWithUser(ctx context.Context, shortID, originalURL, userID string) (string, error)
 	GetUserURLs(ctx context.Context, userID string) ([]UserURL, error)
 	DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) error
+	Stats(ctx context.Context) (StatsResult, error)
 }
 
 // BatchEntry is a single item to store in a batch save operation.
@@ -29,6 +30,12 @@ type BatchEntry struct {
 type UserURL struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+}
+
+// StatsResult contains aggregate statistics for the service.
+type StatsResult struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
 }
 
 // ErrURLAlreadyExists is returned when trying to save a duplicate URL.

@@ -5,14 +5,17 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"go-url-shortener/api/proto/shortenerpb"
 	"go-url-shortener/internal/audit"
 	"go-url-shortener/internal/config"
+	"go-url-shortener/internal/grpcserver"
 	"go-url-shortener/internal/profiler"
 	"go-url-shortener/internal/repository"
 	"go-url-shortener/internal/server"
@@ -20,6 +23,7 @@ import (
 	"go-url-shortener/internal/tlsconfig"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -85,6 +89,32 @@ func main() {
 
 	svc := service.NewShortenerService(repo)
 
+	// Starting gRPC server
+	grpcListener, err := net.Listen("tcp", cfg.Server.GRPCAddress)
+	if err != nil {
+		logger.Fatal("failed to listen for gRPC", zap.String("address", cfg.Server.GRPCAddress), zap.Error(err))
+	}
+
+	grpcSrv := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			grpcserver.AuthInterceptor(cfg.Security.CookieSecret),
+		),
+	)
+
+	grpcShortenerSrv := grpcserver.NewShortenerGRPCServer(svc, cfg.Server.BaseURL)
+	if err := grpcShortenerSrv.Validate(); err != nil {
+		logger.Fatal("invalid gRPC server configuration", zap.Error(err))
+	}
+
+	shortenerpb.RegisterShortenerServiceServer(grpcSrv, grpcShortenerSrv)
+
+	go func() {
+		logger.Info("gRPC server started", zap.String("address", cfg.Server.GRPCAddress))
+		if err := grpcSrv.Serve(grpcListener); err != nil {
+			logger.Error("gRPC server error", zap.Error(err))
+		}
+	}()
+
 	auditSubject := audit.NewSubject()
 	if cfg.Audit.FilePath != "" {
 		fo, err := audit.NewFileObserver(cfg.Audit.FilePath)
@@ -100,12 +130,13 @@ func main() {
 	}
 
 	router := server.NewRouter(server.RouterDeps{
-		BaseURL:      cfg.Server.BaseURL,
-		CookieSecret: cfg.Security.CookieSecret,
-		Logger:       logger,
-		Repo:         repo,
-		Svc:          svc,
-		AuditSubject: auditSubject,
+		BaseURL:       cfg.Server.BaseURL,
+		CookieSecret:  cfg.Security.CookieSecret,
+		Logger:        logger,
+		Repo:          repo,
+		Svc:           svc,
+		AuditSubject:  auditSubject,
+		TrustedSubnet: cfg.Server.TrustedSubnet,
 	})
 
 	srv := &http.Server{
@@ -150,6 +181,10 @@ func main() {
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	<-stop
 	logger.Info("Shutting down server gracefully...")
+
+	// Graceful shutdown gRPC
+	grpcSrv.GracefulStop()
+	logger.Info("gRPC server stopped")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 

@@ -201,6 +201,11 @@ func (s *ShortenerService) GetOriginalURL(ctx context.Context, shortID string) (
 	return s.repo.Get(ctx, shortID)
 }
 
+// GetStats returns the total number of URLs and unique users in the system.
+func (s *ShortenerService) GetStats(ctx context.Context) (repository.StatsResult, error) {
+	return s.repo.Stats(ctx)
+}
+
 // GetUserURLs returns all URLs created by the given user.
 func (s *ShortenerService) GetUserURLs(ctx context.Context, userID string) ([]repository.UserURL, error) {
 	return s.repo.GetUserURLs(ctx, userID)
